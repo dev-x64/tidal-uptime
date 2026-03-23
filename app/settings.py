@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     check_interval_seconds: int = Field(default=300, alias="CHECK_INTERVAL_SECONDS")
     request_timeout_seconds: float = Field(default=6.0, alias="REQUEST_TIMEOUT_SECONDS")
     database_path: str = Field(default="data/uptime.db", alias="DATABASE_PATH")
+    reference_api_version_source_url: str = Field(
+        default="https://raw.githubusercontent.com/binimum/hifi-api/refs/heads/main/main.py",
+        alias="REFERENCE_API_VERSION_SOURCE_URL",
+    )
+    reference_api_version_cache_path: str = Field(
+        default="data/reference_api_version.json",
+        alias="REFERENCE_API_VERSION_CACHE_PATH",
+    )
+    reference_api_version_refresh_seconds: int = Field(
+        default=86400,
+        alias="REFERENCE_API_VERSION_REFRESH_SECONDS",
+    )
     history_retention_runs: int = Field(default=4320, alias="HISTORY_RETENTION_RUNS")
     status_page_window_hours: int = Field(default=8, alias="STATUS_PAGE_WINDOW_HOURS")
     max_track_retries: int = Field(default=2, alias="MAX_TRACK_RETRIES")

@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from app.database import SQLiteStore
+from app.reference_api_version import ReferenceApiVersionTracker
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ class EndpointMonitor:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.store = SQLiteStore(settings)
+        self.reference_api_version = ReferenceApiVersionTracker(settings)
         self._snapshot: dict[str, Any] = {
             "lastUpdated": utc_timestamp(),
             "api": [],
@@ -138,6 +140,7 @@ class EndpointMonitor:
 
     async def start(self) -> None:
         await self.store.initialize()
+        await self.reference_api_version.start()
         stored_snapshot = await self.store.load_latest_snapshot()
         if stored_snapshot is not None:
             async with self._lock:
@@ -177,6 +180,7 @@ class EndpointMonitor:
     async def get_status_page_data(self, history_limit: int | None = None) -> dict[str, Any]:
         effective_history_limit = history_limit or self.settings.status_page_history_points
         payload = await self.store.get_status_page_data(effective_history_limit)
+        payload["referenceApiVersion"] = await self.reference_api_version.get_payload()
         payload["refreshInProgress"] = self.is_refresh_in_progress()
         payload["historyWindowPoints"] = effective_history_limit
         payload["historyWindowHours"] = self.settings.status_page_window_hours
@@ -311,6 +315,7 @@ class EndpointMonitor:
                 limits=limits,
                 follow_redirects=True,
             ) as client:
+                await self.reference_api_version.ensure_fresh(client)
                 results = await asyncio.gather(
                     *(self._check_endpoint(client, endpoint) for endpoint in endpoint_urls)
                 )
@@ -382,6 +387,7 @@ class EndpointMonitor:
                 limits=limits,
                 follow_redirects=True,
             ) as client:
+                await self.reference_api_version.ensure_fresh(client)
                 selected_results = await asyncio.gather(
                     *(self._check_endpoint(client, str(endpoint["url"])) for endpoint in selected_endpoints)
                 )

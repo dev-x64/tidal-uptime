@@ -307,6 +307,28 @@ def render_dashboard() -> str:
       color: #d7e6dd;
     }
 
+    .version-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: #d7e6dd;
+    }
+
+    .version-pill.current {
+      background: #22a570bf;
+      border-color: #22a570bf;
+      color: #eefdf4;
+    }
+
+    .version-pill.outdated {
+      background: #a5a222bf;
+      border-color: #a5a222bf;
+      color: #fffce1;
+    }
+
     .status-chip {
       padding: 4px 9px;
       border-radius: 999px;
@@ -788,7 +810,7 @@ def render_dashboard() -> str:
         </div>
       </div>
       <div class="banner-actions">
-        <div class="banner-meta">Last updated: <strong id="last-updated">n/a</strong> · updates every <strong id="refresh-interval">5m</strong></div>
+        <div class="banner-meta">Last updated: <strong id="last-updated">n/a</strong> · updates every <strong id="refresh-interval">5m</strong> · actual API <strong id="reference-api-version">n/a</strong></div>
         <div class="banner-buttons">
           <button class="button" id="subscriptions-button" type="button" hidden>Subscriptions</button>
           <button class="button primary" id="manage-button" type="button">Manage instances</button>
@@ -1013,7 +1035,8 @@ def render_dashboard() -> str:
       historyWindowPoints: 96,
       historyWindowHours: 8,
       checkIntervalSeconds: 300,
-      emailAlertingEnabled: false
+      emailAlertingEnabled: false,
+      referenceApiVersion: null
     };
 
     const refreshMs = 30000;
@@ -1024,6 +1047,7 @@ def render_dashboard() -> str:
       summarySubtitle: document.getElementById("summary-subtitle"),
       lastUpdated: document.getElementById("last-updated"),
       refreshInterval: document.getElementById("refresh-interval"),
+      referenceApiVersion: document.getElementById("reference-api-version"),
       groupSummary: document.getElementById("group-summary"),
       statusList: document.getElementById("status-list"),
       footerStats: document.getElementById("footer-stats"),
@@ -1132,6 +1156,47 @@ def render_dashboard() -> str:
         statusCode: null,
         error: null
       };
+    }
+
+    function normalizeVersionValue(value) {
+      return String(value || "").trim().replaceAll(",", ".");
+    }
+
+    function parseVersionSegments(value) {
+      const normalized = normalizeVersionValue(value);
+      if (!normalized) return null;
+
+      const parts = normalized.split(".");
+      if (parts.some((part) => !/^\\d+$/.test(part))) {
+        return null;
+      }
+
+      return parts.map((part) => Number(part));
+    }
+
+    function compareVersions(left, right) {
+      const leftParts = parseVersionSegments(left);
+      const rightParts = parseVersionSegments(right);
+      if (!leftParts || !rightParts) return null;
+
+      const length = Math.max(leftParts.length, rightParts.length);
+      for (let index = 0; index < length; index += 1) {
+        const leftValue = leftParts[index] ?? 0;
+        const rightValue = rightParts[index] ?? 0;
+        if (leftValue < rightValue) return -1;
+        if (leftValue > rightValue) return 1;
+      }
+
+      return 0;
+    }
+
+    function versionBadgeClass(version) {
+      if (!version) return "unknown";
+
+      const comparison = compareVersions(version, state.referenceApiVersion);
+      if (comparison === 0) return "current";
+      if (comparison !== null && comparison < 0) return "outdated";
+      return "unknown";
     }
 
     function historyBarTitle(entry) {
@@ -1299,6 +1364,7 @@ def render_dashboard() -> str:
 
     function renderInstance(item) {
       const version = item.version ? `v${item.version}` : "no version";
+      const versionClass = versionBadgeClass(item.version);
       const uptimeText = item.uptimePercentage === null || item.uptimePercentage === undefined
         ? "n/a"
         : `${item.uptimePercentage.toFixed(3)}%`;
@@ -1340,7 +1406,7 @@ def render_dashboard() -> str:
               <span class="status-chip ${escapeHtml(item.state)}">${escapeHtml(stateLabel(item.state))}</span>
             </div>
             <div class="instance-meta">
-              <span class="meta">${escapeHtml(version)}</span>
+              <span class="meta version-pill ${escapeHtml(versionClass)}">${escapeHtml(version)}</span>
               <span class="uptime">Uptime: ${escapeHtml(uptimeText)}</span>
               ${showSubscribeButton ? `<button class="ghost-button icon-button tooltip-anchor" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-tooltip="Subscribe by email">&#128276;</button>` : ""}
             </div>
@@ -1360,10 +1426,14 @@ def render_dashboard() -> str:
       const summary = payload.summary || {};
       const instances = Array.isArray(payload.instances) ? payload.instances : [];
       const historyPoints = payload.historyPoints || 0;
+      const referenceApiVersion = payload.referenceApiVersion && typeof payload.referenceApiVersion === "object"
+        ? payload.referenceApiVersion
+        : {};
       state.historyWindowPoints = payload.historyWindowPoints || state.historyWindowPoints;
       state.historyWindowHours = payload.historyWindowHours || state.historyWindowHours;
       state.checkIntervalSeconds = payload.checkIntervalSeconds || state.checkIntervalSeconds;
       state.emailAlertingEnabled = Boolean(payload.emailAlertingEnabled);
+      state.referenceApiVersion = normalizeVersionValue(referenceApiVersion.version) || null;
 
       refs.summaryDot.className = `dot ${summary.state || "unknown"}`;
       refs.summaryTitle.textContent =
@@ -1374,6 +1444,7 @@ def render_dashboard() -> str:
         `${summary.streamingCount || 0}/${summary.totalInstances || 0} instances currently serving tracks, ${summary.downCount || 0} degraded.`;
       refs.lastUpdated.textContent = formatTime(payload.lastUpdated);
       refs.refreshInterval.textContent = formatIntervalLabel(state.checkIntervalSeconds);
+      refs.referenceApiVersion.textContent = state.referenceApiVersion ? `v${state.referenceApiVersion}` : "n/a";
       refs.groupSummary.textContent =
         `${historyPoints} checks over ~${state.historyWindowHours}h · every ${formatIntervalLabel(state.checkIntervalSeconds)}`;
       refs.footerStats.textContent = `${summary.totalInstances || 0} instances · ${summary.apiCount || 0} API alive · ${summary.streamingCount || 0} streaming`;

@@ -5,3 +5,4 @@ __pycache__/
 venv/
 .env
 .smtp.toml
+data/reference_api_version.json
