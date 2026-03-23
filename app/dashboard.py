@@ -518,6 +518,12 @@ def render_dashboard() -> str:
       gap: 18px;
     }
 
+    .manager-column {
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
     .auth-panel {
       width: min(420px, 100%);
     }
@@ -647,6 +653,11 @@ def render_dashboard() -> str:
       width: 16px;
       height: 16px;
       accent-color: var(--accent);
+    }
+
+    .manager-card-title {
+      font-weight: 700;
+      margin-bottom: 12px;
     }
 
     .managed-list {
@@ -831,7 +842,7 @@ def render_dashboard() -> str:
         <div class="modal-head">
           <div>
             <div class="modal-title">Instance Manager</div>
-            <div class="small">Add, edit or delete monitored endpoints. Changes are saved and the affected API is rechecked.</div>
+            <div class="small">Add, edit or delete monitored endpoints. Endpoint edits recheck only the affected API, and alert presets can be applied to all instances at once.</div>
           </div>
           <div class="instance-actions">
             <button class="ghost-button danger" id="logout-button" style="margin-right: 20px;" type="button">Logout</button>
@@ -840,40 +851,80 @@ def render_dashboard() -> str:
         </div>
 
       <div class="manager-grid">
-        <section class="manager-card">
-          <div style="font-weight:700; margin-bottom:12px;" id="form-title">Add instance</div>
-          <form id="instance-form">
-            <div class="field">
-              <label for="instance-url">Endpoint URL</label>
-              <input id="instance-url" name="url" type="url" placeholder="https://example.com" required>
-            </div>
-            <label class="checkbox-row" for="alerts-enabled">
-              <input id="alerts-enabled" name="alertsEnabled" type="checkbox" checked>
-              <span>Enable Discord alerts for this instance (send alerts to the configured Discord webhook)</span>
-            </label>
-            <label class="checkbox-row" for="alert-on-outage">
-              <input id="alert-on-outage" name="alertOnOutage" type="checkbox" checked>
-              <span>Send Outage alerts (base API does not work)</span>
-            </label>
-            <label class="checkbox-row" for="alert-on-search">
-              <input id="alert-on-search" name="alertOnSearch" type="checkbox" checked>
-              <span>Send Search alerts (search check fails)</span>
-            </label>
-            <label class="checkbox-row" for="alert-on-track">
-              <input id="alert-on-track" name="alertOnTrack" type="checkbox" checked>
-              <span>Send Track alerts (track check fails)</span>
-            </label>
-            <label class="checkbox-row" for="alert-on-recovery">
-              <input id="alert-on-recovery" name="alertOnRecovery" type="checkbox" checked>
-              <span>Send Recovery notifications</span>
-            </label>
-            <div class="manager-actions">
-              <button class="button primary" id="submit-button" type="submit">Add instance</button>
-              <button class="ghost-button" id="cancel-button" type="button" hidden>Cancel</button>
-            </div>
-          </form>
-          <div class="manager-status" id="manager-status"></div>
-        </section>
+        <div class="manager-column">
+          <section class="manager-card">
+            <div class="manager-card-title" id="form-title">Add instance</div>
+            <form id="instance-form">
+              <div class="field">
+                <label for="instance-url">Endpoint URL</label>
+                <input id="instance-url" name="url" type="url" placeholder="https://example.com" required>
+              </div>
+              <label class="checkbox-row" for="alerts-enabled">
+                <input id="alerts-enabled" name="alertsEnabled" type="checkbox" checked>
+                <span>Enable Discord alerts for this instance (send alerts to the configured Discord webhook)</span>
+              </label>
+              <label class="checkbox-row" for="email-alerts-enabled">
+                <input id="email-alerts-enabled" name="emailAlertsEnabled" type="checkbox" checked>
+                <span>Enable Email alerts for this instance (send alerts to email)</span>
+              </label>
+              <label class="checkbox-row" for="alert-on-outage">
+                <input id="alert-on-outage" name="alertOnOutage" type="checkbox" checked>
+                <span>Send Outage alerts (base API does not work)</span>
+              </label>
+              <label class="checkbox-row" for="alert-on-search">
+                <input id="alert-on-search" name="alertOnSearch" type="checkbox" checked>
+                <span>Send Search alerts (search check fails)</span>
+              </label>
+              <label class="checkbox-row" for="alert-on-track">
+                <input id="alert-on-track" name="alertOnTrack" type="checkbox" checked>
+                <span>Send Track alerts (track check fails)</span>
+              </label>
+              <label class="checkbox-row" for="alert-on-recovery">
+                <input id="alert-on-recovery" name="alertOnRecovery" type="checkbox" checked>
+                <span>Send Recovery notifications</span>
+              </label>
+              <div class="manager-actions">
+                <button class="button primary" id="submit-button" type="submit">Add instance</button>
+                <button class="ghost-button" id="cancel-button" type="button" hidden>Cancel</button>
+              </div>
+            </form>
+            <div class="manager-status" id="manager-status"></div>
+          </section>
+
+          <section class="manager-card">
+            <div class="manager-card-title">Apply to all instances</div>
+            <form id="bulk-settings-form">
+              <label class="checkbox-row" for="bulk-alerts-enabled">
+                <input id="bulk-alerts-enabled" name="alertsEnabled" type="checkbox" checked>
+                <span>Enable Discord alerts for all instances (send alerts to the configured Discord webhook)</span>
+              </label>
+              <label class="checkbox-row" for="bulk-email-alerts-enabled">
+                <input id="bulk-email-alerts-enabled" name="emailAlertsEnabled" type="checkbox" checked>
+                <span>Enable Email alerts for all instances (send alerts to email)</span>
+              </label>
+              <label class="checkbox-row" for="bulk-alert-on-outage">
+                <input id="bulk-alert-on-outage" name="alertOnOutage" type="checkbox" checked>
+                <span>Send Outage alerts (base API does not work)</span>
+              </label>
+              <label class="checkbox-row" for="bulk-alert-on-search">
+                <input id="bulk-alert-on-search" name="alertOnSearch" type="checkbox" checked>
+                <span>Send Search alerts (search check fails)</span>
+              </label>
+              <label class="checkbox-row" for="bulk-alert-on-track">
+                <input id="bulk-alert-on-track" name="alertOnTrack" type="checkbox" checked>
+                <span>Send Track alerts (track check fails)</span>
+              </label>
+              <label class="checkbox-row" for="bulk-alert-on-recovery">
+                <input id="bulk-alert-on-recovery" name="alertOnRecovery" type="checkbox" checked>
+                <span>Send Recovery notifications</span>
+              </label>
+              <div class="manager-actions">
+                <button class="button primary" id="bulk-submit-button" type="submit">Apply to all instances</button>
+              </div>
+            </form>
+            <div class="manager-status" id="bulk-status"></div>
+          </section>
+        </div>
 
         <section class="manager-card">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
@@ -961,7 +1012,8 @@ def render_dashboard() -> str:
       subscribeEndpointUrl: "",
       historyWindowPoints: 96,
       historyWindowHours: 8,
-      checkIntervalSeconds: 300
+      checkIntervalSeconds: 300,
+      emailAlertingEnabled: false
     };
 
     const refreshMs = 30000;
@@ -984,6 +1036,7 @@ def render_dashboard() -> str:
       formTitle: document.getElementById("form-title"),
       urlInput: document.getElementById("instance-url"),
       alertsEnabledInput: document.getElementById("alerts-enabled"),
+      emailAlertsEnabledInput: document.getElementById("email-alerts-enabled"),
       alertOnOutageInput: document.getElementById("alert-on-outage"),
       alertOnSearchInput: document.getElementById("alert-on-search"),
       alertOnTrackInput: document.getElementById("alert-on-track"),
@@ -991,6 +1044,15 @@ def render_dashboard() -> str:
       submitButton: document.getElementById("submit-button"),
       cancelButton: document.getElementById("cancel-button"),
       managerStatus: document.getElementById("manager-status"),
+      bulkForm: document.getElementById("bulk-settings-form"),
+      bulkAlertsEnabledInput: document.getElementById("bulk-alerts-enabled"),
+      bulkEmailAlertsEnabledInput: document.getElementById("bulk-email-alerts-enabled"),
+      bulkAlertOnOutageInput: document.getElementById("bulk-alert-on-outage"),
+      bulkAlertOnSearchInput: document.getElementById("bulk-alert-on-search"),
+      bulkAlertOnTrackInput: document.getElementById("bulk-alert-on-track"),
+      bulkAlertOnRecoveryInput: document.getElementById("bulk-alert-on-recovery"),
+      bulkSubmitButton: document.getElementById("bulk-submit-button"),
+      bulkStatus: document.getElementById("bulk-status"),
       instanceList: document.getElementById("instance-list"),
       instanceCountLabel: document.getElementById("instance-count-label"),
       authModal: document.getElementById("auth-modal"),
@@ -1108,6 +1170,11 @@ def render_dashboard() -> str:
       refs.managerStatus.className = `manager-status ${kind}`.trim();
     }
 
+    function setBulkStatus(message, kind = "") {
+      refs.bulkStatus.textContent = message;
+      refs.bulkStatus.className = `manager-status ${kind}`.trim();
+    }
+
     function setAuthStatus(message, kind = "") {
       refs.authStatus.textContent = message;
       refs.authStatus.className = `manager-status ${kind}`.trim();
@@ -1156,6 +1223,7 @@ def render_dashboard() -> str:
       refs.formTitle.textContent = "Add instance";
       refs.submitButton.textContent = "Add instance";
       refs.alertsEnabledInput.checked = true;
+      refs.emailAlertsEnabledInput.checked = true;
       refs.alertOnOutageInput.checked = true;
       refs.alertOnSearchInput.checked = true;
       refs.alertOnTrackInput.checked = true;
@@ -1173,6 +1241,7 @@ def render_dashboard() -> str:
       refs.modal.setAttribute("aria-hidden", "true");
       resetForm();
       setManagerStatus("");
+      setBulkStatus("");
     }
 
     function openAuthModal() {
@@ -1233,6 +1302,7 @@ def render_dashboard() -> str:
       const uptimeText = item.uptimePercentage === null || item.uptimePercentage === undefined
         ? "n/a"
         : `${item.uptimePercentage.toFixed(3)}%`;
+      const showSubscribeButton = Boolean(state.emailAlertingEnabled && item.emailAlertsEnabled);
       const baseNote = item.error
         ? `${item.error}${item.statusCode ? ` (${item.statusCode})` : ""}`
         : item.trackOk
@@ -1272,7 +1342,7 @@ def render_dashboard() -> str:
             <div class="instance-meta">
               <span class="meta">${escapeHtml(version)}</span>
               <span class="uptime">Uptime: ${escapeHtml(uptimeText)}</span>
-              <button class="ghost-button icon-button tooltip-anchor" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-tooltip="Subscribe by email">&#128276;</button>
+              ${showSubscribeButton ? `<button class="ghost-button icon-button tooltip-anchor" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-tooltip="Subscribe by email">&#128276;</button>` : ""}
             </div>
           </div>
           <div class="probe-statuses">${searchPill}${trackPill}</div>
@@ -1293,6 +1363,7 @@ def render_dashboard() -> str:
       state.historyWindowPoints = payload.historyWindowPoints || state.historyWindowPoints;
       state.historyWindowHours = payload.historyWindowHours || state.historyWindowHours;
       state.checkIntervalSeconds = payload.checkIntervalSeconds || state.checkIntervalSeconds;
+      state.emailAlertingEnabled = Boolean(payload.emailAlertingEnabled);
 
       refs.summaryDot.className = `dot ${summary.state || "unknown"}`;
       refs.summaryTitle.textContent =
@@ -1336,12 +1407,13 @@ def render_dashboard() -> str:
           <div class="managed-copy">
             <a class="instance-name" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.url)}</a>
             <div class="managed-meta">Updated ${escapeHtml(formatTime(item.updated_at))}</div>
-            <div class="managed-meta">Alerts: ${item.alerts_enabled ? "enabled" : "disabled"}</div>
+            <div class="managed-meta">Discord alerts: ${item.alerts_enabled ? "enabled" : "disabled"}</div>
+            <div class="managed-meta">Email alerts: ${item.email_alerts_enabled ? "enabled" : "disabled"}</div>
             <div class="managed-meta">Levels: ${escapeHtml(alertLevelsText(item))}</div>
           </div>
           <div class="instance-actions">
-            <button class="ghost-button" type="button" data-action="toggle-alerts" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-alerts-enabled="${item.alerts_enabled ? "true" : "false"}">${item.alerts_enabled ? "Disable alerts" : "Enable alerts"}</button>
-            <button class="ghost-button" type="button" data-action="edit" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-alerts-enabled="${item.alerts_enabled ? "true" : "false"}" data-alert-on-outage="${item.alert_on_outage ? "true" : "false"}" data-alert-on-search="${item.alert_on_search ? "true" : "false"}" data-alert-on-track="${item.alert_on_track ? "true" : "false"}" data-alert-on-recovery="${item.alert_on_recovery ? "true" : "false"}">Edit</button>
+            <button class="ghost-button" type="button" data-action="toggle-alerts" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-alerts-enabled="${item.alerts_enabled ? "true" : "false"}">${item.alerts_enabled ? "Disable Discord" : "Enable Discord"}</button>
+            <button class="ghost-button" type="button" data-action="edit" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-alerts-enabled="${item.alerts_enabled ? "true" : "false"}" data-email-alerts-enabled="${item.email_alerts_enabled ? "true" : "false"}" data-alert-on-outage="${item.alert_on_outage ? "true" : "false"}" data-alert-on-search="${item.alert_on_search ? "true" : "false"}" data-alert-on-track="${item.alert_on_track ? "true" : "false"}" data-alert-on-recovery="${item.alert_on_recovery ? "true" : "false"}">Edit</button>
             <button class="ghost-button" type="button" data-action="delete" data-id="${item.id}" data-url="${escapeHtml(item.url)}">Delete</button>
           </div>
         </article>
@@ -1588,6 +1660,7 @@ def render_dashboard() -> str:
       event.preventDefault();
       const url = refs.urlInput.value.trim();
       const alertsEnabled = refs.alertsEnabledInput.checked;
+      const emailAlertsEnabled = refs.emailAlertsEnabledInput.checked;
       const alertOnOutage = refs.alertOnOutageInput.checked;
       const alertOnSearch = refs.alertOnSearchInput.checked;
       const alertOnTrack = refs.alertOnTrackInput.checked;
@@ -1605,6 +1678,7 @@ def render_dashboard() -> str:
           body: JSON.stringify({
             url,
             alertsEnabled,
+            emailAlertsEnabled,
             alertOnOutage,
             alertOnSearch,
             alertOnTrack,
@@ -1636,6 +1710,58 @@ def render_dashboard() -> str:
       }
     });
 
+    refs.bulkForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const alertsEnabled = refs.bulkAlertsEnabledInput.checked;
+      const emailAlertsEnabled = refs.bulkEmailAlertsEnabledInput.checked;
+      const alertOnOutage = refs.bulkAlertOnOutageInput.checked;
+      const alertOnSearch = refs.bulkAlertOnSearchInput.checked;
+      const alertOnTrack = refs.bulkAlertOnTrackInput.checked;
+      const alertOnRecovery = refs.bulkAlertOnRecoveryInput.checked;
+
+      refs.bulkSubmitButton.disabled = true;
+      setBulkStatus("Applying settings to all instances...");
+
+      try {
+        const payload = await fetchJson(`${instancesEndpoint}/settings`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            alertsEnabled,
+            emailAlertsEnabled,
+            alertOnOutage,
+            alertOnSearch,
+            alertOnTrack,
+            alertOnRecovery
+          })
+        });
+        const updatedCount = payload && typeof payload.updated === "number" ? payload.updated : 0;
+        setBulkStatus(`Updated ${updatedCount} instances.`, "success");
+        showToast("Alert settings applied to all instances.", "success", "Bulk update");
+        if (state.editingId !== null) {
+          refs.alertsEnabledInput.checked = alertsEnabled;
+          refs.emailAlertsEnabledInput.checked = emailAlertsEnabled;
+          refs.alertOnOutageInput.checked = alertOnOutage;
+          refs.alertOnSearchInput.checked = alertOnSearch;
+          refs.alertOnTrackInput.checked = alertOnTrack;
+          refs.alertOnRecoveryInput.checked = alertOnRecovery;
+        }
+        await reloadAll();
+        await loadInstances();
+      } catch (error) {
+        if (error.message === "Authentication required") {
+          state.authenticated = false;
+          updateManageButton();
+          closeModal();
+          openAuthModal();
+          return;
+        }
+        setBulkStatus(error.message, "error");
+        showToast(error.message, "error", "Bulk update failed");
+      } finally {
+        refs.bulkSubmitButton.disabled = false;
+      }
+    });
+
     refs.cancelButton.addEventListener("click", () => {
       resetForm();
       setManagerStatus("");
@@ -1655,6 +1781,7 @@ def render_dashboard() -> str:
       const id = Number(button.dataset.id);
       const url = button.dataset.url || "";
       const alertsEnabled = button.dataset.alertsEnabled === "true";
+      const emailAlertsEnabled = button.dataset.emailAlertsEnabled === "true";
       const alertOnOutage = button.dataset.alertOnOutage === "true";
       const alertOnSearch = button.dataset.alertOnSearch === "true";
       const alertOnTrack = button.dataset.alertOnTrack === "true";
@@ -1664,6 +1791,7 @@ def render_dashboard() -> str:
         state.editingId = id;
         refs.urlInput.value = url;
         refs.alertsEnabledInput.checked = alertsEnabled;
+        refs.emailAlertsEnabledInput.checked = emailAlertsEnabled;
         refs.alertOnOutageInput.checked = alertOnOutage;
         refs.alertOnSearchInput.checked = alertOnSearch;
         refs.alertOnTrackInput.checked = alertOnTrack;
@@ -1678,7 +1806,7 @@ def render_dashboard() -> str:
 
       if (action === "toggle-alerts") {
         const nextAlertsEnabled = !alertsEnabled;
-        setManagerStatus(`${nextAlertsEnabled ? "Enabling" : "Disabling"} alerts for ${url}...`);
+        setManagerStatus(`${nextAlertsEnabled ? "Enabling" : "Disabling"} Discord alerts for ${url}...`);
         try {
           await fetchJson(`${instancesEndpoint}/${id}/alerts`, {
             method: "PATCH",
@@ -1688,13 +1816,13 @@ def render_dashboard() -> str:
             refs.alertsEnabledInput.checked = nextAlertsEnabled;
           }
           setManagerStatus(
-            nextAlertsEnabled ? "Alerts enabled." : "Alerts disabled.",
+            nextAlertsEnabled ? "Discord alerts enabled." : "Discord alerts disabled.",
             "success"
           );
           showToast(
-            nextAlertsEnabled ? "Alerts enabled." : "Alerts disabled.",
+            nextAlertsEnabled ? "Discord alerts enabled." : "Discord alerts disabled.",
             "success",
-            "Instance alerts"
+            "Discord alerts"
           );
           await loadInstances();
         } catch (error) {

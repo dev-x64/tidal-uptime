@@ -36,6 +36,7 @@ class SQLiteStore:
         self,
         url: str,
         alerts_enabled: bool = True,
+        email_alerts_enabled: bool = True,
         alert_on_outage: bool = True,
         alert_on_search: bool = True,
         alert_on_track: bool = True,
@@ -45,6 +46,7 @@ class SQLiteStore:
             self._create_endpoint_sync,
             url,
             alerts_enabled,
+            email_alerts_enabled,
             alert_on_outage,
             alert_on_search,
             alert_on_track,
@@ -56,6 +58,7 @@ class SQLiteStore:
         endpoint_id: int,
         url: str,
         alerts_enabled: bool = True,
+        email_alerts_enabled: bool = True,
         alert_on_outage: bool = True,
         alert_on_search: bool = True,
         alert_on_track: bool = True,
@@ -66,6 +69,7 @@ class SQLiteStore:
             endpoint_id,
             url,
             alerts_enabled,
+            email_alerts_enabled,
             alert_on_outage,
             alert_on_search,
             alert_on_track,
@@ -101,6 +105,28 @@ class SQLiteStore:
             alerts_enabled,
         )
 
+    async def update_all_endpoint_alert_settings(
+        self,
+        alerts_enabled: bool,
+        email_alerts_enabled: bool,
+        alert_on_outage: bool,
+        alert_on_search: bool,
+        alert_on_track: bool,
+        alert_on_recovery: bool,
+    ) -> int:
+        return await asyncio.to_thread(
+            self._update_all_endpoint_alert_settings_sync,
+            alerts_enabled,
+            email_alerts_enabled,
+            alert_on_outage,
+            alert_on_search,
+            alert_on_track,
+            alert_on_recovery,
+        )
+
+    async def clear_all_alert_states(self) -> None:
+        await asyncio.to_thread(self._clear_all_alert_states_sync)
+
     async def create_email_subscription(self, endpoint_id: int, email: str) -> dict[str, Any]:
         return await asyncio.to_thread(
             self._create_email_subscription_sync,
@@ -127,6 +153,7 @@ class SQLiteStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     url TEXT NOT NULL UNIQUE,
                     alerts_enabled INTEGER NOT NULL DEFAULT 1,
+                    email_alerts_enabled INTEGER NOT NULL DEFAULT 1,
                     alert_on_outage INTEGER NOT NULL DEFAULT 1,
                     alert_on_degraded INTEGER NOT NULL DEFAULT 1,
                     alert_on_search INTEGER NOT NULL DEFAULT 1,
@@ -246,6 +273,10 @@ class SQLiteStore:
                 connection.execute(
                     "ALTER TABLE monitored_endpoints ADD COLUMN alerts_enabled INTEGER NOT NULL DEFAULT 1"
                 )
+            if "email_alerts_enabled" not in endpoint_columns:
+                connection.execute(
+                    "ALTER TABLE monitored_endpoints ADD COLUMN email_alerts_enabled INTEGER NOT NULL DEFAULT 1"
+                )
             if "alert_on_outage" not in endpoint_columns:
                 connection.execute(
                     "ALTER TABLE monitored_endpoints ADD COLUMN alert_on_outage INTEGER NOT NULL DEFAULT 1"
@@ -285,6 +316,7 @@ class SQLiteStore:
                     INSERT INTO monitored_endpoints (
                         url,
                         alerts_enabled,
+                        email_alerts_enabled,
                         alert_on_outage,
                         alert_on_degraded,
                         alert_on_search,
@@ -293,9 +325,9 @@ class SQLiteStore:
                         created_at,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    [(url, 1, 1, 1, 1, 1, 1, now, now) for url in self.settings.default_endpoints],
+                    [(url, 1, 1, 1, 1, 1, 1, 1, now, now) for url in self.settings.default_endpoints],
                 )
             latest_status_columns = {
                 row[1]
@@ -584,7 +616,7 @@ class SQLiteStore:
             rows = connection.execute(
                 """
                 SELECT id, url, alerts_enabled, alert_on_outage, alert_on_search,
-                       alert_on_track,
+                       email_alerts_enabled, alert_on_track,
                        alert_on_recovery, created_at, updated_at
                 FROM monitored_endpoints
                 ORDER BY id ASC
@@ -604,6 +636,7 @@ class SQLiteStore:
         self,
         url: str,
         alerts_enabled: bool = True,
+        email_alerts_enabled: bool = True,
         alert_on_outage: bool = True,
         alert_on_search: bool = True,
         alert_on_track: bool = True,
@@ -617,6 +650,7 @@ class SQLiteStore:
                     INSERT INTO monitored_endpoints (
                         url,
                         alerts_enabled,
+                        email_alerts_enabled,
                         alert_on_outage,
                         alert_on_degraded,
                         alert_on_search,
@@ -625,11 +659,12 @@ class SQLiteStore:
                         created_at,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         url,
                         1 if alerts_enabled else 0,
+                        1 if email_alerts_enabled else 0,
                         1 if alert_on_outage else 0,
                         1 if (alert_on_search or alert_on_track) else 0,
                         1 if alert_on_search else 0,
@@ -644,7 +679,7 @@ class SQLiteStore:
 
             row = connection.execute(
                 """
-                SELECT id, url, alerts_enabled, alert_on_outage, alert_on_search,
+                SELECT id, url, alerts_enabled, email_alerts_enabled, alert_on_outage, alert_on_search,
                        alert_on_track,
                        alert_on_recovery, created_at, updated_at
                 FROM monitored_endpoints
@@ -660,6 +695,7 @@ class SQLiteStore:
         endpoint_id: int,
         url: str,
         alerts_enabled: bool = True,
+        email_alerts_enabled: bool = True,
         alert_on_outage: bool = True,
         alert_on_search: bool = True,
         alert_on_track: bool = True,
@@ -671,13 +707,14 @@ class SQLiteStore:
                 cursor = connection.execute(
                     """
                     UPDATE monitored_endpoints
-                    SET url = ?, alerts_enabled = ?, alert_on_outage = ?, alert_on_degraded = ?,
+                    SET url = ?, alerts_enabled = ?, email_alerts_enabled = ?, alert_on_outage = ?, alert_on_degraded = ?,
                         alert_on_search = ?, alert_on_track = ?, alert_on_recovery = ?, updated_at = ?
                     WHERE id = ?
                     """,
                     (
                         url,
                         1 if alerts_enabled else 0,
+                        1 if email_alerts_enabled else 0,
                         1 if alert_on_outage else 0,
                         1 if (alert_on_search or alert_on_track) else 0,
                         1 if alert_on_search else 0,
@@ -695,7 +732,7 @@ class SQLiteStore:
 
             row = connection.execute(
                 """
-                SELECT id, url, alerts_enabled, alert_on_outage, alert_on_search,
+                SELECT id, url, alerts_enabled, email_alerts_enabled, alert_on_outage, alert_on_search,
                        alert_on_track,
                        alert_on_recovery, created_at, updated_at
                 FROM monitored_endpoints
@@ -727,7 +764,7 @@ class SQLiteStore:
 
             row = connection.execute(
                 """
-                SELECT id, url, alerts_enabled, alert_on_outage, alert_on_search,
+                SELECT id, url, alerts_enabled, email_alerts_enabled, alert_on_outage, alert_on_search,
                        alert_on_track,
                        alert_on_recovery, created_at, updated_at
                 FROM monitored_endpoints
@@ -738,13 +775,50 @@ class SQLiteStore:
             connection.commit()
         return self._normalize_endpoint_row(row)
 
+    def _update_all_endpoint_alert_settings_sync(
+        self,
+        alerts_enabled: bool,
+        email_alerts_enabled: bool,
+        alert_on_outage: bool,
+        alert_on_search: bool,
+        alert_on_track: bool,
+        alert_on_recovery: bool,
+    ) -> int:
+        timestamp = self._utc_now()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE monitored_endpoints
+                SET alerts_enabled = ?,
+                    email_alerts_enabled = ?,
+                    alert_on_outage = ?,
+                    alert_on_degraded = ?,
+                    alert_on_search = ?,
+                    alert_on_track = ?,
+                    alert_on_recovery = ?,
+                    updated_at = ?
+                """,
+                (
+                    1 if alerts_enabled else 0,
+                    1 if email_alerts_enabled else 0,
+                    1 if alert_on_outage else 0,
+                    1 if (alert_on_search or alert_on_track) else 0,
+                    1 if alert_on_search else 0,
+                    1 if alert_on_track else 0,
+                    1 if alert_on_recovery else 0,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        return int(cursor.rowcount or 0)
+
     def _create_email_subscription_sync(self, endpoint_id: int, email: str) -> dict[str, Any]:
         timestamp = self._utc_now()
         normalized_email = email.strip().lower()
         with self._connect() as connection:
             endpoint = connection.execute(
                 """
-                SELECT id, url
+                SELECT id, url, email_alerts_enabled
                 FROM monitored_endpoints
                 WHERE id = ?
                 """,
@@ -752,6 +826,8 @@ class SQLiteStore:
             ).fetchone()
             if endpoint is None:
                 raise LookupError("Endpoint not found")
+            if not bool(endpoint["email_alerts_enabled"]):
+                raise ValueError("Email alerts are disabled for this instance")
 
             try:
                 cursor = connection.execute(
@@ -850,6 +926,7 @@ class SQLiteStore:
             endpoints = connection.execute(
                 """
                 SELECT id, url, created_at, updated_at
+                     , email_alerts_enabled
                 FROM monitored_endpoints
                 ORDER BY id ASC
                 """
@@ -959,6 +1036,7 @@ class SQLiteStore:
                     "apiOk": bool(current_row["api_ok"]) if current_row else False,
                     "searchOk": bool(current_row["search_ok"]) if current_row else False,
                     "trackOk": bool(current_row["track_ok"]) if current_row else False,
+                    "emailAlertsEnabled": bool(endpoint["email_alerts_enabled"]),
                     "uptimePercentage": uptime_percentage,
                     "history": history,
                 }
@@ -1028,6 +1106,7 @@ class SQLiteStore:
     def _normalize_endpoint_row(self, row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         payload = dict(row)
         payload["alerts_enabled"] = bool(payload.get("alerts_enabled", 1))
+        payload["email_alerts_enabled"] = bool(payload.get("email_alerts_enabled", 1))
         payload["alert_on_outage"] = bool(payload.get("alert_on_outage", 1))
         payload["alert_on_search"] = bool(
             payload.get("alert_on_search", payload.get("alert_on_degraded", 1))
@@ -1037,6 +1116,11 @@ class SQLiteStore:
         )
         payload["alert_on_recovery"] = bool(payload.get("alert_on_recovery", 1))
         return payload
+
+    def _clear_all_alert_states_sync(self) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM endpoint_alert_state")
+            connection.commit()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)

@@ -181,6 +181,7 @@ class EndpointMonitor:
         payload["historyWindowPoints"] = effective_history_limit
         payload["historyWindowHours"] = self.settings.status_page_window_hours
         payload["checkIntervalSeconds"] = self.settings.check_interval_seconds
+        payload["emailAlertingEnabled"] = self.settings.email_alerting_enabled
         return payload
 
     def is_refresh_in_progress(self) -> bool:
@@ -200,6 +201,7 @@ class EndpointMonitor:
         self,
         url: str,
         alerts_enabled: bool = True,
+        email_alerts_enabled: bool = True,
         alert_on_outage: bool = True,
         alert_on_search: bool = True,
         alert_on_track: bool = True,
@@ -208,6 +210,7 @@ class EndpointMonitor:
         endpoint = await self.store.create_endpoint(
             url,
             alerts_enabled,
+            email_alerts_enabled,
             alert_on_outage,
             alert_on_search,
             alert_on_track,
@@ -221,6 +224,7 @@ class EndpointMonitor:
         endpoint_id: int,
         url: str,
         alerts_enabled: bool = True,
+        email_alerts_enabled: bool = True,
         alert_on_outage: bool = True,
         alert_on_search: bool = True,
         alert_on_track: bool = True,
@@ -230,6 +234,7 @@ class EndpointMonitor:
             endpoint_id,
             url,
             alerts_enabled,
+            email_alerts_enabled,
             alert_on_outage,
             alert_on_search,
             alert_on_track,
@@ -238,6 +243,26 @@ class EndpointMonitor:
         await self.store.clear_alert_state(endpoint_id)
         await self._refresh_selected_endpoints([endpoint])
         return endpoint
+
+    async def update_all_endpoint_settings(
+        self,
+        alerts_enabled: bool,
+        email_alerts_enabled: bool,
+        alert_on_outage: bool,
+        alert_on_search: bool,
+        alert_on_track: bool,
+        alert_on_recovery: bool,
+    ) -> int:
+        updated = await self.store.update_all_endpoint_alert_settings(
+            alerts_enabled,
+            email_alerts_enabled,
+            alert_on_outage,
+            alert_on_search,
+            alert_on_track,
+            alert_on_recovery,
+        )
+        await self.store.clear_all_alert_states()
+        return updated
 
     async def set_endpoint_alerts_enabled(
         self,
@@ -624,12 +649,18 @@ class EndpointMonitor:
             endpoint_id = int(endpoint["id"])
             url = str(endpoint["url"])
             current_state = AlertState.from_record(alert_states.get(endpoint_id))
-            alerts_enabled = bool(endpoint.get("alerts_enabled", True))
+            discord_channel_active = (
+                self.settings.discord_alerting_enabled and bool(endpoint.get("alerts_enabled", True))
+            )
             endpoint_email_recipients = email_subscriptions.get(endpoint_id, [])
-            email_channel_active = bool(endpoint_email_recipients) and self.settings.email_alerting_enabled
-            any_channel_active = self.settings.discord_alerting_enabled or email_channel_active
+            email_channel_active = (
+                bool(endpoint_email_recipients)
+                and self.settings.email_alerting_enabled
+                and bool(endpoint.get("email_alerts_enabled", True))
+            )
+            any_channel_active = discord_channel_active or email_channel_active
             result = results_by_url.get(url)
-            if not alerts_enabled:
+            if not any_channel_active:
                 persisted_states.append(self._clear_alert_state(utc_timestamp()).to_record(endpoint_id))
                 continue
             condition = (
@@ -642,7 +673,8 @@ class EndpointMonitor:
                 url=url,
                 state=current_state,
                 condition=condition,
-                email_recipients=endpoint_email_recipients,
+                discord_enabled=discord_channel_active,
+                email_recipients=endpoint_email_recipients if email_channel_active else [],
                 send_failure_alert=(
                     condition is not None
                     and any_channel_active
@@ -660,6 +692,7 @@ class EndpointMonitor:
         url: str,
         state: AlertState,
         condition: AlertCondition | None,
+        discord_enabled: bool,
         email_recipients: list[str],
         send_failure_alert: bool,
         send_recovery_alert: bool,
@@ -703,6 +736,7 @@ class EndpointMonitor:
                 )
                 if await self._dispatch_alert(
                     client=client,
+                    discord_enabled=discord_enabled,
                     discord_content=discord_content,
                     email_subject=email_subject,
                     email_body=email_body,
@@ -735,6 +769,7 @@ class EndpointMonitor:
                     )
                     if await self._dispatch_alert(
                         client=client,
+                        discord_enabled=discord_enabled,
                         discord_content=discord_content,
                         email_subject=email_subject,
                         email_body=email_body,
@@ -763,6 +798,7 @@ class EndpointMonitor:
                 )
                 if await self._dispatch_alert(
                     client=client,
+                    discord_enabled=discord_enabled,
                     discord_content=discord_content,
                     email_subject=email_subject,
                     email_body=email_body,
@@ -903,6 +939,7 @@ class EndpointMonitor:
     async def _dispatch_alert(
         self,
         client: httpx.AsyncClient,
+        discord_enabled: bool,
         discord_content: str,
         email_subject: str,
         email_body: str,
@@ -910,7 +947,7 @@ class EndpointMonitor:
         email_recipients: list[str],
     ) -> bool:
         delivered = False
-        if self.settings.discord_alerting_enabled:
+        if discord_enabled and self.settings.discord_alerting_enabled:
             delivered = await self._send_discord_alert(client, discord_content) or delivered
         if email_recipients and self.settings.email_alerting_enabled:
             delivered = (

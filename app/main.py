@@ -46,6 +46,7 @@ class EndpointPayload(BaseModel):
 
     url: AnyHttpUrl
     alerts_enabled: bool = Field(default=True, alias="alertsEnabled")
+    email_alerts_enabled: bool = Field(default=True, alias="emailAlertsEnabled")
     alert_on_outage: bool = Field(default=True, alias="alertOnOutage")
     alert_on_search: bool = Field(default=True, alias="alertOnSearch")
     alert_on_track: bool = Field(default=True, alias="alertOnTrack")
@@ -60,6 +61,17 @@ class EndpointAlertsPayload(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     alerts_enabled: bool = Field(alias="alertsEnabled")
+
+
+class BulkEndpointAlertsPayload(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    alerts_enabled: bool = Field(default=True, alias="alertsEnabled")
+    email_alerts_enabled: bool = Field(default=True, alias="emailAlertsEnabled")
+    alert_on_outage: bool = Field(default=True, alias="alertOnOutage")
+    alert_on_search: bool = Field(default=True, alias="alertOnSearch")
+    alert_on_track: bool = Field(default=True, alias="alertOnTrack")
+    alert_on_recovery: bool = Field(default=True, alias="alertOnRecovery")
 
 
 class EmailSubscriptionPayload(BaseModel):
@@ -148,6 +160,7 @@ async def create_instance(
         endpoint = await monitor.create_endpoint(
             str(payload.url).rstrip("/"),
             payload.alerts_enabled,
+            payload.email_alerts_enabled,
             payload.alert_on_outage,
             payload.alert_on_search,
             payload.alert_on_track,
@@ -170,6 +183,7 @@ async def update_instance(
             endpoint_id,
             str(payload.url).rstrip("/"),
             payload.alerts_enabled,
+            payload.email_alerts_enabled,
             payload.alert_on_outage,
             payload.alert_on_search,
             payload.alert_on_track,
@@ -180,6 +194,23 @@ async def update_instance(
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return endpoint
+
+
+@app.patch("/api/instances/settings", include_in_schema=False)
+async def bulk_update_instance_settings(
+    payload: BulkEndpointAlertsPayload,
+    auth_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
+) -> dict[str, int]:
+    require_authenticated(auth_cookie)
+    updated = await monitor.update_all_endpoint_settings(
+        payload.alerts_enabled,
+        payload.email_alerts_enabled,
+        payload.alert_on_outage,
+        payload.alert_on_search,
+        payload.alert_on_track,
+        payload.alert_on_recovery,
+    )
+    return {"updated": updated}
 
 
 @app.patch("/api/instances/{endpoint_id}/alerts", include_in_schema=False)
