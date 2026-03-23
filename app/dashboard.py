@@ -89,11 +89,25 @@ def render_dashboard() -> str:
     }
 
     .banner-actions {
+      display: grid;
+      justify-items: end;
+      gap: 10px;
+      flex: none;
+    }
+
+    .banner-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+      text-align: right;
+    }
+
+    .banner-buttons {
       display: flex;
       align-items: center;
+      justify-content: flex-end;
       gap: 10px;
       flex-wrap: wrap;
-      justify-content: flex-end;
     }
 
     .button, .ghost-button {
@@ -144,6 +158,102 @@ def render_dashboard() -> str:
       color: #d9e5df;
       font-size: 15px;
       font-weight: 700;
+    }
+
+    .group-title-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      position: relative;
+    }
+
+    .hint-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .hint-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: #b9c8c3;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: help;
+      user-select: none;
+    }
+
+    .hint-tooltip {
+      position: absolute;
+      top: calc(100% + 10px);
+      left: 0;
+      z-index: 8;
+      min-width: 290px;
+      max-width: 360px;
+      padding: 12px 13px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(16, 22, 23, 0.98);
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(4px);
+      transition: opacity 90ms ease, transform 90ms ease, visibility 90ms ease;
+      pointer-events: none;
+    }
+
+    .hint-wrap:hover .hint-tooltip,
+    .hint-wrap:focus-within .hint-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .hint-tooltip-title {
+      margin-bottom: 8px;
+      color: #edf4ef;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .hint-tooltip-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .hint-tooltip-item {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+      color: #d7e4de;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .hint-tooltip-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-top: 3px;
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.03);
+    }
+
+    .hint-tooltip-dot.operational { background: var(--ok); }
+    .hint-tooltip-dot.degraded { background: var(--warn); }
+    .hint-tooltip-dot.outage { background: var(--bad); }
+
+    .hint-tooltip-item strong {
+      color: #f3f8f4;
     }
 
     .group-summary {
@@ -265,6 +375,57 @@ def render_dashboard() -> str:
     .bar.degraded { background: var(--warn); }
     .bar.outage { background: var(--bad); }
     .bar.unknown { background: var(--unknown); }
+
+    .tooltip-anchor {
+      position: relative;
+    }
+
+    .tooltip-anchor::before,
+    .tooltip-anchor::after {
+      position: absolute;
+      left: 50%;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 80ms ease, transform 80ms ease, visibility 80ms ease;
+      z-index: 12;
+    }
+
+    .tooltip-anchor::before {
+      content: attr(data-tooltip);
+      bottom: calc(100% + 10px);
+      transform: translateX(-50%) translateY(4px);
+      min-width: max-content;
+      max-width: 280px;
+      padding: 10px 11px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(16, 22, 23, 0.98);
+      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.26);
+      color: #e7efeb;
+      font-size: 12px;
+      line-height: 1.45;
+      text-align: left;
+      white-space: pre-line;
+    }
+
+    .tooltip-anchor::after {
+      content: "";
+      bottom: calc(100% + 4px);
+      transform: translateX(-50%) translateY(4px);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid rgba(16, 22, 23, 0.98);
+    }
+
+    .tooltip-anchor:hover::before,
+    .tooltip-anchor:hover::after,
+    .tooltip-anchor:focus-visible::before,
+    .tooltip-anchor:focus-visible::after {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
 
     .timeline-labels {
       display: flex;
@@ -585,8 +746,14 @@ def render_dashboard() -> str:
       }
 
       .banner-actions, .instance-meta {
+        justify-items: start;
         justify-content: flex-start;
         text-align: left;
+      }
+
+      .banner-meta, .banner-buttons {
+        text-align: left;
+        justify-content: flex-start;
       }
 
       .manager-grid {
@@ -610,16 +777,40 @@ def render_dashboard() -> str:
         </div>
       </div>
       <div class="banner-actions">
-        <div class="small">Last updated: <strong id="last-updated">n/a</strong> · updates every <strong id="refresh-interval">5m</strong></div>
-        <button class="button" id="subscriptions-button" type="button" hidden>Subscriptions</button>
-        <button class="button primary" id="manage-button" type="button">Manage instances</button>
-        <a class="ghost-button link" href="/status.json" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;">status.json</a>
+        <div class="banner-meta">Last updated: <strong id="last-updated">n/a</strong> · updates every <strong id="refresh-interval">5m</strong></div>
+        <div class="banner-buttons">
+          <button class="button" id="subscriptions-button" type="button" hidden>Subscriptions</button>
+          <button class="button primary" id="manage-button" type="button">Manage instances</button>
+          <a class="ghost-button link" href="/status.json" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;">status.json</a>
+        </div>
       </div>
     </section>
 
     <section class="card group">
       <div class="group-title">
-        <span>Tidal Instances</span>
+        <div class="group-title-main">
+          <span>Tidal Instances</span>
+          <span class="hint-wrap">
+            <span class="hint-badge" tabindex="0" aria-label="Status legend">?</span>
+            <span class="hint-tooltip" role="tooltip">
+              <span class="hint-tooltip-title">Status legend</span>
+              <span class="hint-tooltip-list">
+                <span class="hint-tooltip-item">
+                  <span class="hint-tooltip-dot operational"></span>
+                  <span><strong>Operational</strong>: track check works</span>
+                </span>
+                <span class="hint-tooltip-item">
+                  <span class="hint-tooltip-dot degraded"></span>
+                  <span><strong>Degraded</strong>: API works, but search or track fails</span>
+                </span>
+                <span class="hint-tooltip-item">
+                  <span class="hint-tooltip-dot outage"></span>
+                  <span><strong>Outage</strong>: base API is unreachable</span>
+                </span>
+              </span>
+            </span>
+          </span>
+        </div>
         <span class="group-summary" id="group-summary">Recent checks</span>
       </div>
       <div class="stack" id="status-list"></div>
@@ -1033,7 +1224,7 @@ def render_dashboard() -> str:
         ? values.slice(values.length - historyPoints)
         : [...Array(historyPoints - values.length).fill(null).map(() => normalizeHistoryEntry(null)), ...values];
       return normalized.map((item) => (
-        `<span class="bar ${escapeHtml(item.state)}" title="${escapeHtml(historyBarTitle(item))}"></span>`
+        `<span class="bar tooltip-anchor ${escapeHtml(item.state)}" data-tooltip="${escapeHtml(historyBarTitle(item))}"></span>`
       )).join("");
     }
 
@@ -1081,7 +1272,7 @@ def render_dashboard() -> str:
             <div class="instance-meta">
               <span class="meta">${escapeHtml(version)}</span>
               <span class="uptime">Uptime: ${escapeHtml(uptimeText)}</span>
-              <button class="ghost-button icon-button" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}" title="Subscribe by email">&#128276;</button>
+              <button class="ghost-button icon-button tooltip-anchor" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-tooltip="Subscribe by email">&#128276;</button>
             </div>
           </div>
           <div class="probe-statuses">${searchPill}${trackPill}</div>
