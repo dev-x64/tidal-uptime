@@ -81,17 +81,17 @@ def require_authenticated(auth_cookie: str | None) -> None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def root() -> HTMLResponse:
     return HTMLResponse(render_dashboard())
 
 
-@app.get("/robots.txt", response_class=PlainTextResponse)
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
 async def robots_txt() -> PlainTextResponse:
     return PlainTextResponse("User-agent: *\nDisallow: /\n")
 
 
-@app.get("/favicon.ico", response_class=PlainTextResponse)
+@app.get("/favicon.ico", response_class=PlainTextResponse, include_in_schema=False)
 async def favicon() -> PlainTextResponse:
     return PlainTextResponse("", status_code=204)
 
@@ -101,19 +101,19 @@ async def status_json() -> dict:
     return await monitor.get_snapshot()
 
 
-@app.get("/api/status-page")
+@app.get("/api/status-page", include_in_schema=False)
 async def status_page_data() -> dict:
     return await monitor.get_status_page_data()
 
 
-@app.get("/api/auth/status")
+@app.get("/api/auth/status", include_in_schema=False)
 async def auth_status(
     auth_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> dict[str, bool]:
     return {"authenticated": auth_manager.is_cookie_valid(auth_cookie)}
 
 
-@app.post("/api/auth/login")
+@app.post("/api/auth/login", include_in_schema=False)
 async def auth_login(payload: LoginPayload) -> Response:
     if not auth_manager.verify_password(payload.password):
         raise HTTPException(status_code=401, detail="Invalid password")
@@ -123,14 +123,14 @@ async def auth_login(payload: LoginPayload) -> Response:
     return response
 
 
-@app.post("/api/auth/logout")
+@app.post("/api/auth/logout", include_in_schema=False)
 async def auth_logout() -> Response:
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     auth_manager.clear_login_cookie(response)
     return response
 
 
-@app.get("/api/instances")
+@app.get("/api/instances", include_in_schema=False)
 async def list_instances(
     auth_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> dict[str, list[dict]]:
@@ -138,7 +138,7 @@ async def list_instances(
     return {"items": await monitor.list_endpoints()}
 
 
-@app.post("/api/instances", status_code=status.HTTP_201_CREATED)
+@app.post("/api/instances", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_instance(
     payload: EndpointPayload,
     auth_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
@@ -158,7 +158,7 @@ async def create_instance(
     return endpoint
 
 
-@app.put("/api/instances/{endpoint_id}")
+@app.put("/api/instances/{endpoint_id}", include_in_schema=False)
 async def update_instance(
     endpoint_id: int,
     payload: EndpointPayload,
@@ -182,7 +182,7 @@ async def update_instance(
     return endpoint
 
 
-@app.patch("/api/instances/{endpoint_id}/alerts")
+@app.patch("/api/instances/{endpoint_id}/alerts", include_in_schema=False)
 async def update_instance_alerts(
     endpoint_id: int,
     payload: EndpointAlertsPayload,
@@ -199,7 +199,11 @@ async def update_instance_alerts(
     return endpoint
 
 
-@app.post("/api/instances/{endpoint_id}/subscriptions", status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/instances/{endpoint_id}/subscriptions",
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
 async def create_instance_subscription(
     endpoint_id: int,
     payload: EmailSubscriptionPayload,
@@ -219,7 +223,7 @@ async def create_instance_subscription(
     return subscription
 
 
-@app.get("/api/subscriptions")
+@app.get("/api/subscriptions", include_in_schema=False)
 async def list_subscriptions(
     auth_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> dict[str, list[dict]]:
@@ -227,7 +231,11 @@ async def list_subscriptions(
     return {"items": await monitor.list_email_subscriptions()}
 
 
-@app.delete("/api/subscriptions/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete(
+    "/api/subscriptions/{subscription_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    include_in_schema=False,
+)
 async def delete_subscription(
     subscription_id: int,
     auth_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
@@ -240,7 +248,7 @@ async def delete_subscription(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.delete("/api/instances/{endpoint_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/api/instances/{endpoint_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 async def delete_instance(
     endpoint_id: int,
     auth_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
@@ -253,7 +261,7 @@ async def delete_instance(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.post("/api/refresh")
+@app.post("/api/refresh", include_in_schema=False)
 async def trigger_refresh() -> dict:
     snapshot = await monitor.get_snapshot()
     started = await monitor.trigger_refresh()
