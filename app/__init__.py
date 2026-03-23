@@ -1,0 +1,1 @@
+"""Tidal uptime monitor package."""

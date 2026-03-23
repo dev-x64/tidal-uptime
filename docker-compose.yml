@@ -1,0 +1,28 @@
+services:
+  tidal-uptime:
+    build: .
+    container_name: tidal-uptime
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    environment:
+      CHECK_INTERVAL_SECONDS: "300"
+      REQUEST_TIMEOUT_SECONDS: "6"
+      DATABASE_PATH: "/app/data/uptime.db"
+      STATUS_PAGE_WINDOW_HOURS: "8"
+      MAX_TRACK_RETRIES: "2"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+      AUTH_COOKIE_SECRET: "${AUTH_COOKIE_SECRET}"
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
+      DISCORD_ALERTS_ENABLED: "${DISCORD_ALERTS_ENABLED}"
+      DISCORD_ALERT_FAILURE_STREAK: "${DISCORD_ALERT_FAILURE_STREAK}"
+      DISCORD_ALERT_RECOVERY_ENABLED: "${DISCORD_ALERT_RECOVERY_ENABLED}"
+      DISCORD_ALERT_RECOVERY_STREAK: "${DISCORD_ALERT_RECOVERY_STREAK}"
+      DISCORD_ALERT_TRIGGER_STATES: "${DISCORD_ALERT_TRIGGER_STATES}"
+      DISCORD_ALERT_TRIGGER_PROBES: "${DISCORD_ALERT_TRIGGER_PROBES}"
+      EMAIL_ALERTS_ENABLED: "${EMAIL_ALERTS_ENABLED}"
+    volumes:
+      - ./data:/app/data
+      - ./.smtp.toml:/app/.smtp.toml:ro
+    restart: unless-stopped
