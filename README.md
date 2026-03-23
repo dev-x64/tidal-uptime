@@ -150,6 +150,19 @@ All subscriptions can be reviewed and deleted from the authenticated `Subscripti
 
 The dashboard timeline shows the last `8` hours by default.
 The number of columns is calculated automatically from `STATUS_PAGE_WINDOW_HOURS` and `CHECK_INTERVAL_SECONDS`.
+The dashboard summary also shows the effective poll interval, for example: `96 checks over ~8h · every 5m`.
+
+To change the history window or how often the monitor checks endpoints, edit `.env`:
+
+```env
+STATUS_PAGE_WINDOW_HOURS=8
+CHECK_INTERVAL_SECONDS=300
+```
+
+Examples:
+
+- `STATUS_PAGE_WINDOW_HOURS=12` with `CHECK_INTERVAL_SECONDS=300` -> `144` checks
+- `STATUS_PAGE_WINDOW_HOURS=8` with `CHECK_INTERVAL_SECONDS=60` -> `480` checks
 
 Legend:
 

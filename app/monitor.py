@@ -180,6 +180,7 @@ class EndpointMonitor:
         payload["refreshInProgress"] = self.is_refresh_in_progress()
         payload["historyWindowPoints"] = effective_history_limit
         payload["historyWindowHours"] = self.settings.status_page_window_hours
+        payload["checkIntervalSeconds"] = self.settings.check_interval_seconds
         return payload
 
     def is_refresh_in_progress(self) -> bool:

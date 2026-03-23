@@ -217,6 +217,37 @@ def render_dashboard() -> str:
       min-height: 18px;
     }
 
+    .probe-statuses {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .probe-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.03);
+      color: #d7e4de;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .probe-pill-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--unknown);
+      flex: none;
+    }
+
+    .probe-pill.ok .probe-pill-dot { background: var(--ok); }
+    .probe-pill.bad .probe-pill-dot { background: var(--bad); }
+
     .timeline {
       display: grid;
       grid-template-columns: repeat(var(--timeline-columns, 96), minmax(0, 1fr));
@@ -740,7 +771,8 @@ def render_dashboard() -> str:
       subscribeEndpointId: null,
       subscribeEndpointUrl: "",
       historyWindowPoints: 96,
-      historyWindowHours: 8
+      historyWindowHours: 8,
+      checkIntervalSeconds: 300
     };
 
     const refs = {
@@ -820,6 +852,14 @@ def render_dashboard() -> str:
         outage: "Outage",
         unknown: "Unknown"
       }[stateValue] || "Unknown";
+    }
+
+    function formatIntervalLabel(seconds) {
+      const value = Number(seconds) || 0;
+      if (value <= 0) return "n/a";
+      if (value % 3600 === 0) return `${value / 3600}h`;
+      if (value % 60 === 0) return `${value / 60}m`;
+      return `${value}s`;
     }
 
     function normalizeHistoryEntry(entry) {
@@ -1011,6 +1051,18 @@ def render_dashboard() -> str:
       const note = item.state === "degraded"
         ? `${baseNote} Search: ${item.searchOk ? "responding." : "not responding."}`
         : baseNote;
+      const searchPill = `
+        <span class="probe-pill ${item.searchOk ? "ok" : "bad"}">
+          <span class="probe-pill-dot"></span>
+          <span>Search</span>
+        </span>
+      `;
+      const trackPill = `
+        <span class="probe-pill ${item.trackOk ? "ok" : "bad"}">
+          <span class="probe-pill-dot"></span>
+          <span>Track</span>
+        </span>
+      `;
       return `
         <article class="instance">
           <div class="instance-head">
@@ -1025,6 +1077,7 @@ def render_dashboard() -> str:
               <button class="ghost-button icon-button" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}" title="Subscribe by email">&#128276;</button>
             </div>
           </div>
+          <div class="probe-statuses">${searchPill}${trackPill}</div>
           <div class="instance-note">${escapeHtml(note)}</div>
           <div class="timeline" style="--timeline-columns:${Number(state.historyWindowPoints) || 96}">${buildHistoryBars(item.history)}</div>
           <div class="timeline-labels">
@@ -1041,6 +1094,7 @@ def render_dashboard() -> str:
       const historyPoints = payload.historyPoints || 0;
       state.historyWindowPoints = payload.historyWindowPoints || state.historyWindowPoints;
       state.historyWindowHours = payload.historyWindowHours || state.historyWindowHours;
+      state.checkIntervalSeconds = payload.checkIntervalSeconds || state.checkIntervalSeconds;
 
       refs.summaryDot.className = `dot ${summary.state || "unknown"}`;
       refs.summaryTitle.textContent =
@@ -1050,7 +1104,8 @@ def render_dashboard() -> str:
       refs.summarySubtitle.textContent =
         `${summary.streamingCount || 0}/${summary.totalInstances || 0} instances currently serving tracks, ${summary.downCount || 0} degraded.`;
       refs.lastUpdated.textContent = formatTime(payload.lastUpdated);
-      refs.groupSummary.textContent = `${historyPoints} checks over ~${state.historyWindowHours}h`;
+      refs.groupSummary.textContent =
+        `${historyPoints} checks over ~${state.historyWindowHours}h · every ${formatIntervalLabel(state.checkIntervalSeconds)}`;
       refs.footerStats.textContent = `${summary.totalInstances || 0} instances · ${summary.apiCount || 0} API alive · ${summary.streamingCount || 0} streaming`;
 
       if (instances.length === 0) {
