@@ -610,7 +610,7 @@ def render_dashboard() -> str:
         </div>
       </div>
       <div class="banner-actions">
-        <div class="small">Last updated: <strong id="last-updated">n/a</strong></div>
+        <div class="small">Last updated: <strong id="last-updated">n/a</strong> · updates every <strong id="refresh-interval">5m</strong></div>
         <button class="button" id="subscriptions-button" type="button" hidden>Subscriptions</button>
         <button class="button primary" id="manage-button" type="button">Manage instances</button>
         <a class="ghost-button link" href="/status.json" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;">status.json</a>
@@ -763,8 +763,6 @@ def render_dashboard() -> str:
     const authStatusEndpoint = "/api/auth/status";
     const authLoginEndpoint = "/api/auth/login";
     const authLogoutEndpoint = "/api/auth/logout";
-    const refreshMs = 30000;
-
     const state = {
       editingId: null,
       authenticated: false,
@@ -775,11 +773,14 @@ def render_dashboard() -> str:
       checkIntervalSeconds: 300
     };
 
+    const refreshMs = 30000;
+
     const refs = {
       summaryDot: document.getElementById("summary-dot"),
       summaryTitle: document.getElementById("summary-title"),
       summarySubtitle: document.getElementById("summary-subtitle"),
       lastUpdated: document.getElementById("last-updated"),
+      refreshInterval: document.getElementById("refresh-interval"),
       groupSummary: document.getElementById("group-summary"),
       statusList: document.getElementById("status-list"),
       footerStats: document.getElementById("footer-stats"),
@@ -1110,6 +1111,7 @@ def render_dashboard() -> str:
       refs.summarySubtitle.textContent =
         `${summary.streamingCount || 0}/${summary.totalInstances || 0} instances currently serving tracks, ${summary.downCount || 0} degraded.`;
       refs.lastUpdated.textContent = formatTime(payload.lastUpdated);
+      refs.refreshInterval.textContent = formatIntervalLabel(state.checkIntervalSeconds);
       refs.groupSummary.textContent =
         `${historyPoints} checks over ~${state.historyWindowHours}h · every ${formatIntervalLabel(state.checkIntervalSeconds)}`;
       refs.footerStats.textContent = `${summary.totalInstances || 0} instances · ${summary.apiCount || 0} API alive · ${summary.streamingCount || 0} streaming`;
@@ -1573,7 +1575,9 @@ def render_dashboard() -> str:
     resetForm();
     updateManageButton();
     refreshAuthStatus();
-    reloadAll();
+    reloadAll().finally(() => {
+      refs.refreshInterval.textContent = formatIntervalLabel(state.checkIntervalSeconds);
+    });
     setInterval(loadStatusPage, refreshMs);
   </script>
 </body>
