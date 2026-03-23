@@ -1048,9 +1048,15 @@ def render_dashboard() -> str:
           : item.apiOk
             ? "Base API reachable."
             : "No successful data yet.";
-      const note = item.state === "degraded"
-        ? `${baseNote} Search: ${item.searchOk ? "responding." : "not responding."}`
-        : baseNote;
+      let note = baseNote;
+      if (item.state === "degraded") {
+        const degradedParts = [baseNote];
+        if (!item.trackOk) {
+          degradedParts.push("Track: problem.");
+        }
+        degradedParts.push(`Search: ${item.searchOk ? "responding." : "not responding."}`);
+        note = degradedParts.join(" ");
+      }
       const searchPill = `
         <span class="probe-pill ${item.searchOk ? "ok" : "bad"}">
           <span class="probe-pill-dot"></span>
