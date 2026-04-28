@@ -4,8 +4,6 @@ services:
     container_name: tidal-uptime
     env_file:
       - .env
-    ports:
-      - "8000:8000"
     environment:
       CHECK_INTERVAL_SECONDS: "${CHECK_INTERVAL_SECONDS}"
       REQUEST_TIMEOUT_SECONDS: "10"
@@ -24,3 +22,10 @@ services:
       - ./data:/app/data
       - ./.smtp.toml:/app/.smtp.toml:ro
     restart: unless-stopped
+    networks:
+      - proxy
+
+
+networks:
+  proxy:
+    external: true

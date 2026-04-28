@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app import main, monitor, dashboard, settings, auth\")",
+      "Bash(python -m py_compile app/main.py app/monitor.py app/dashboard.py app/settings.py app/auth.py app/database.py)",
+      "Bash(python -m py_compile app/main.py app/monitor.py app/dashboard.py app/settings.py)",
+      "Bash(python -m py_compile app/database.py app/settings.py)",
+      "Bash(python -m py_compile app/monitor.py app/database.py app/settings.py)",
+      "Bash(python -m py_compile app/main.py app/monitor.py app/database.py app/settings.py)",
+      "Bash(python -m py_compile app/dashboard.py app/main.py app/monitor.py app/database.py app/settings.py)",
+      "Bash(python -m py_compile app/main.py app/monitor.py app/database.py app/dashboard.py app/settings.py app/auth.py)",
+      "Bash(python -m py_compile app/monitor.py)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/monitor.py'\\).read\\(\\)\\); ast.parse\\(open\\('app/database.py'\\).read\\(\\)\\); ast.parse\\(open\\('app/dashboard.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
+      "Bash(python -c \"from app.dashboard import render_dashboard; html = render_dashboard\\(\\); print\\(len\\(html\\)\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/database.py', encoding='utf-8'\\).read\\(\\)\\); print\\('ok'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/monitor.py', encoding='utf-8'\\).read\\(\\)\\); print\\('ok'\\)\")",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(f'app/{f}', encoding='utf-8'\\).read\\(\\)\\) for f in \\('database.py','monitor.py','main.py','settings.py'\\)]; print\\('ok'\\)\")",
+      "Bash(python -c \"from app.dashboard import render_dashboard; print\\(len\\(render_dashboard\\(\\)\\)\\)\")",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(f'app/{f}', encoding='utf-8'\\).read\\(\\)\\) for f in \\('database.py','monitor.py','main.py','settings.py','dashboard.py'\\)]; print\\('ok'\\)\")"
+    ]
+  }
+}

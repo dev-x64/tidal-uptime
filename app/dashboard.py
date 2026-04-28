@@ -1,8 +1,111 @@
 from __future__ import annotations
 
 
-def render_dashboard() -> str:
+def render_login() -> str:
     return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tidal Status — Sign in</title>
+  <style>
+    :root {
+      --bg: #111617;
+      --panel: #171d1f;
+      --border: #242d30;
+      --text: #edf4ef;
+      --muted: #93a5a0;
+      --accent: #f08a5d;
+      --bad: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(240, 138, 93, 0.08), transparent 28%),
+        linear-gradient(180deg, #101516 0%, #0d1213 100%);
+    }
+    .login-card {
+      width: min(360px, calc(100vw - 32px));
+      padding: 28px 26px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+    }
+    h1 { margin: 0 0 6px; font-size: 20px; letter-spacing: 0.02em; }
+    p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.08em; }
+    input[type="password"] {
+      width: 100%; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: #0f1416; color: var(--text);
+      font: inherit; outline: none;
+    }
+    input[type="password"]:focus { border-color: var(--accent); }
+    button {
+      width: 100%; margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+      border: 0; background: var(--accent); color: #1a1a1a; font: inherit;
+      font-weight: 700; cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: progress; }
+    .error { margin-top: 12px; color: var(--bad); font-size: 13px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <main class="login-card">
+    <h1>Tidal Status</h1>
+    <p>Enter the admin password to continue.</p>
+    <form id="login-form" autocomplete="on">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="submit" id="submit">Sign in</button>
+      <div class="error" id="error"></div>
+    </form>
+  </main>
+  <script>
+    const form = document.getElementById("login-form");
+    const passwordInput = document.getElementById("password");
+    const submit = document.getElementById("submit");
+    const errorEl = document.getElementById("error");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const password = passwordInput.value;
+      if (!password) return;
+      submit.disabled = true;
+      errorEl.textContent = "";
+      try {
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        if (response.ok) { window.location.replace("/"); return; }
+        let detail = "Invalid password";
+        try {
+          const payload = await response.json();
+          if (payload && typeof payload.detail === "string") detail = payload.detail;
+        } catch (_) {}
+        errorEl.textContent = detail;
+      } catch (err) {
+        errorEl.textContent = "Sign-in failed. Try again.";
+      } finally {
+        submit.disabled = false;
+        passwordInput.select();
+      }
+    });
+  </script>
+</body>
+</html>"""
+
+
+def render_dashboard() -> str:
+    return r"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -22,10 +125,8 @@ def render_dashboard() -> str:
       --unknown: #3a474b;
       --accent: #f08a5d;
     }
-
     * { box-sizing: border-box; }
     html { color-scheme: dark; }
-
     body {
       margin: 0;
       font-family: "Trebuchet MS", "Segoe UI", sans-serif;
@@ -34,1941 +135,1561 @@ def render_dashboard() -> str:
         radial-gradient(circle at top left, rgba(240, 138, 93, 0.08), transparent 28%),
         linear-gradient(180deg, #101516 0%, #0d1213 100%);
     }
-
+    a { color: inherit; }
     .shell {
-      width: min(980px, calc(100vw - 24px));
+      width: min(1100px, calc(100vw - 24px));
       margin: 0 auto;
-      padding: 18px 0 34px;
+      padding: 18px 0 40px;
     }
-
-    .card, .banner, .modal-panel {
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+    }
+    .brand { display:flex; align-items:center; gap:10px; }
+    .brand .logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), #efb88a);
+    }
+    .brand h1 { margin: 0; font-size: 18px; letter-spacing: 0.02em; }
+    .brand .small { color: var(--muted); font-size: 12px; }
+    .topbar-actions { display:flex; gap:8px; flex-wrap: wrap; }
+    .button, .ghost-button {
+      display: inline-flex; align-items: center; gap:6px;
+      padding: 9px 14px; border-radius: 9px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); font: inherit; cursor: pointer;
+      font-weight: 600; font-size: 13px;
+    }
+    .button.primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; }
+    .button.primary:hover { filter: brightness(1.08); }
+    .ghost-button:hover { border-color: #3a474b; }
+    .button:disabled, .ghost-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .danger { border-color: rgba(255, 107, 107, 0.4); color: #ff9494; }
+    .card, .modal-panel {
       border: 1px solid var(--border);
       border-radius: 14px;
       background: var(--panel);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
     }
-
-    .banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 16px 18px;
-      margin-bottom: 14px;
+    .summary {
+      padding: 18px 22px;
+      display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+      gap: 16px; margin-bottom: 18px;
     }
-
-    .banner-main {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 0;
+    .summary-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--unknown); box-shadow: 0 0 0 5px rgba(58,71,75,0.18);
     }
-
-    .dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      flex: none;
-      box-shadow: 0 0 0 4px rgba(255,255,255,0.03);
+    .summary-dot.operational { background: var(--ok); box-shadow: 0 0 0 5px rgba(54,194,109,0.16); }
+    .summary-dot.degraded { background: var(--warn); box-shadow: 0 0 0 5px rgba(227,179,65,0.16); }
+    .summary-dot.outage { background: var(--bad); box-shadow: 0 0 0 5px rgba(255,107,107,0.16); }
+    .summary-title { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+    .summary-sub { color: var(--muted); font-size: 13px; }
+    .summary-stats { display: flex; gap: 16px; }
+    .summary-stats div { text-align: right; }
+    .summary-stats b { font-size: 18px; }
+    .summary-stats span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .group { margin-bottom: 22px; }
+    .group-head {
+      display:flex; align-items:center; justify-content: space-between;
+      margin: 0 4px 10px; gap: 12px;
     }
-
+    .group-title { font-weight: 700; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    .group-count { color: var(--muted); font-size: 12px; }
+    .instances {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+    }
+    .instance {
+      padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px;
+      background: var(--panel); display: flex; flex-direction: column; gap: 8px;
+    }
+    .instance-head { display:flex; align-items:center; gap: 10px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: var(--unknown); }
     .dot.operational { background: var(--ok); }
     .dot.degraded { background: var(--warn); }
     .dot.outage { background: var(--bad); }
-    .dot.unknown { background: var(--unknown); }
-
-    .banner-title {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .banner-subtitle, .small, .meta, .instance-note, .timeline-labels {
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .banner-actions {
-      display: grid;
-      justify-items: end;
-      gap: 10px;
-      flex: none;
-    }
-
-    .banner-meta {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.4;
-      text-align: right;
-    }
-
-    .banner-buttons {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .button, .ghost-button {
-      min-height: 38px;
-      border-radius: 999px;
-      padding: 0 14px;
-      border: 1px solid var(--border);
-      color: var(--text);
-      background: var(--panel-soft);
-      cursor: pointer;
-      transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
-      font-size: 14px;
-    }
-
-    .button:hover, .ghost-button:hover { transform: translateY(-1px); }
-
-    .button.primary {
-      border-color: rgba(240, 138, 93, 0.3);
-      background: linear-gradient(135deg, rgba(240, 138, 93, 0.22), rgba(240, 138, 93, 0.08));
-    }
-
-    .ghost-button.danger {
-      border-color: rgba(255,107,107,0.28);
-      color: #ffd7d7;
-      background: linear-gradient(135deg, rgba(255,107,107,0.18), rgba(255,107,107,0.05));
-    }
-
-    .ghost-button.danger:hover {
-      border-color: rgba(255,107,107,0.42);
-      background: linear-gradient(135deg, rgba(255,107,107,0.24), rgba(255,107,107,0.08));
-    }
-
-    .stack {
-      display: grid;
-      gap: 12px;
-    }
-
-    .group {
-      padding: 6px 0 0;
-    }
-
-    .group-title {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 0 14px 10px;
-      color: #d9e5df;
-      font-size: 15px;
-      font-weight: 700;
-    }
-
-    .group-title-main {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-      position: relative;
-    }
-
-    .hint-wrap {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-    }
-
-    .hint-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.03);
-      color: #b9c8c3;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: help;
-      user-select: none;
-    }
-
-    .hint-tooltip {
-      position: absolute;
-      top: calc(100% + 10px);
-      left: 0;
-      z-index: 8;
-      min-width: 290px;
-      max-width: 360px;
-      padding: 12px 13px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(16, 22, 23, 0.98);
-      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(4px);
-      transition: opacity 90ms ease, transform 90ms ease, visibility 90ms ease;
-      pointer-events: none;
-    }
-
-    .hint-wrap:hover .hint-tooltip,
-    .hint-wrap:focus-within .hint-tooltip {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-    }
-
-    .hint-tooltip-title {
-      margin-bottom: 8px;
-      color: #edf4ef;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .hint-tooltip-list {
-      display: grid;
-      gap: 8px;
-    }
-
-    .hint-tooltip-item {
-      display: grid;
-      grid-template-columns: 10px minmax(0, 1fr);
-      gap: 9px;
-      align-items: start;
-      color: #d7e4de;
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .hint-tooltip-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 999px;
-      margin-top: 3px;
-      box-shadow: 0 0 0 3px rgba(255,255,255,0.03);
-    }
-
-    .hint-tooltip-dot.operational { background: var(--ok); }
-    .hint-tooltip-dot.degraded { background: var(--warn); }
-    .hint-tooltip-dot.outage { background: var(--bad); }
-
-    .hint-tooltip-item strong {
-      color: #f3f8f4;
-    }
-
-    .group-summary {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 500;
-    }
-
-    .instance {
-      padding: 14px;
-      border-top: 1px solid rgba(255,255,255,0.04);
-    }
-
-    .instance-head {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 18px;
-      margin-bottom: 10px;
-    }
-
-    .instance-main {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-
     .instance-name {
-      color: var(--text);
+      font-weight: 700; font-size: 14px; flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       text-decoration: none;
-      font-size: 14px;
-      font-weight: 600;
-      word-break: break-word;
     }
-
-    .instance-name:hover { color: white; }
-
-    .instance-meta {
-      display: flex;
-      gap: 12px;
-      flex-wrap: nowrap;
-      align-items: center;
-      justify-content: flex-end;
-      text-align: right;
-      min-width: 0;
+    .badge {
+      font-size: 11px; padding: 3px 8px; border-radius: 999px;
+      border: 1px solid var(--border); background: var(--panel-soft); color: var(--muted);
     }
-
-    .uptime {
-      font-size: 13px;
-      color: #d7e6dd;
+    .badge.ok { color: var(--ok); border-color: rgba(54,194,109,0.3); }
+    .badge.bad { color: var(--bad); border-color: rgba(255,107,107,0.3); }
+    .instance-meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+    .subchecks { display: flex; flex-wrap: wrap; gap: 6px; }
+    .subcheck-pill {
+      font-size: 11px; padding: 3px 8px; border-radius: 999px;
+      border: 1px solid var(--border); background: var(--panel-soft);
+      display: inline-flex; align-items: center; gap: 5px;
     }
-
-    .version-pill {
-      display: inline-flex;
-      align-items: center;
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.04);
-      color: #d7e6dd;
-    }
-
-    .version-pill.current {
-      background: #22a570bf;
-      border-color: #22a570bf;
-      color: #eefdf4;
-    }
-
-    .version-pill.outdated {
-      background: #a5a222bf;
-      border-color: #a5a222bf;
-      color: #fffce1;
-    }
-
-    .status-chip {
-      padding: 4px 9px;
-      border-radius: 999px;
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      border: 1px solid transparent;
-    }
-
-    .status-chip.operational { color: #d7ffe4; background: rgba(54,194,109,0.12); border-color: rgba(54,194,109,0.22); }
-    .status-chip.degraded { color: #fff0c0; background: rgba(227,179,65,0.12); border-color: rgba(227,179,65,0.22); }
-    .status-chip.outage { color: #ffd4d4; background: rgba(255,107,107,0.12); border-color: rgba(255,107,107,0.22); }
-    .status-chip.unknown { color: #cad6d9; background: rgba(58,71,75,0.22); border-color: rgba(58,71,75,0.35); }
-
-    .instance-note {
-      margin-bottom: 10px;
-      line-height: 1.4;
-      min-height: 18px;
-    }
-
-    .probe-statuses {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-
-    .probe-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      padding: 4px 9px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.06);
-      background: rgba(255,255,255,0.03);
-      color: #d7e4de;
-      font-size: 12px;
-      line-height: 1;
-    }
-
-    .probe-pill-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--unknown);
-      flex: none;
-    }
-
-    .probe-pill.ok .probe-pill-dot { background: var(--ok); }
-    .probe-pill.bad .probe-pill-dot { background: var(--bad); }
-
-    .timeline {
-      display: grid;
-      grid-template-columns: repeat(var(--timeline-columns, 96), minmax(0, 1fr));
-      gap: 2px;
-      margin-bottom: 6px;
-    }
-
-    .bar {
-      height: 25px;
-      border-radius: 6px;
+    .subcheck-pill .dot { width: 7px; height: 7px; }
+    .history { display: flex; gap: 2px; align-items: center; }
+    .history-bar {
+      flex: 1; height: 18px; min-width: 3px; max-width: 5px; border-radius: 2px;
       background: var(--unknown);
     }
-
-    .bar.operational { background: var(--ok); }
-    .bar.degraded { background: var(--warn); }
-    .bar.outage { background: var(--bad); }
-    .bar.unknown { background: var(--unknown); }
-
-    .tooltip-anchor {
-      position: relative;
+    .history-bar.operational { background: var(--ok); }
+    .history-bar.degraded { background: var(--warn); }
+    .history-bar.outage { background: var(--bad); }
+    .latency-chart {
+      position: relative; height: 64px; margin-top: 4px;
+      border-radius: 8px; background: linear-gradient(180deg, rgba(240,138,93,0.04), rgba(240,138,93,0));
+      border: 1px solid var(--border); overflow: hidden;
     }
-
-    .tooltip-anchor::before,
-    .tooltip-anchor::after {
-      position: absolute;
-      left: 50%;
-      opacity: 0;
-      visibility: hidden;
+    .latency-chart svg { display: block; width: 100%; height: 100%; }
+    .latency-chart .axis-label {
+      position: absolute; top: 4px; left: 8px;
+      font-size: 10px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase;
       pointer-events: none;
-      transition: opacity 80ms ease, transform 80ms ease, visibility 80ms ease;
-      z-index: 12;
     }
-
-    .tooltip-anchor::before {
-      content: attr(data-tooltip);
-      bottom: calc(100% + 10px);
-      transform: translateX(-50%) translateY(4px);
-      min-width: max-content;
-      max-width: 280px;
-      padding: 10px 11px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(16, 22, 23, 0.98);
-      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.26);
-      color: #e7efeb;
-      font-size: 12px;
-      line-height: 1.45;
-      text-align: left;
-      white-space: pre-line;
+    .latency-chart .axis-value {
+      position: absolute; top: 4px; right: 8px;
+      font-size: 11px; color: var(--text); font-weight: 600;
+      pointer-events: none;
     }
-
-    .tooltip-anchor::after {
-      content: "";
-      bottom: calc(100% + 4px);
-      transform: translateX(-50%) translateY(4px);
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-top: 6px solid rgba(16, 22, 23, 0.98);
+    .latency-chart .axis-min {
+      position: absolute; bottom: 4px; left: 8px;
+      font-size: 10px; color: var(--muted);
+      pointer-events: none;
     }
-
-    .tooltip-anchor:hover::before,
-    .tooltip-anchor:hover::after,
-    .tooltip-anchor:focus-visible::before,
-    .tooltip-anchor:focus-visible::after {
-      opacity: 1;
-      visibility: visible;
-      transform: translateX(-50%) translateY(0);
+    .latency-chart .axis-max {
+      position: absolute; bottom: 4px; right: 8px;
+      font-size: 10px; color: var(--muted);
+      pointer-events: none;
     }
-
-    .timeline-labels {
-      display: flex;
-      justify-content: space-between;
+    .latency-chart .empty-msg {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      color: var(--muted); font-size: 12px;
     }
-
-    .footer {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 12px;
-      color: var(--muted);
-      font-size: 12px;
-      padding: 0 2px;
-      flex-wrap: wrap;
+    .latency-chart .hover-line {
+      position: absolute; top: 0; bottom: 0; width: 1px;
+      background: rgba(237, 244, 239, 0.4); pointer-events: none; display: none;
     }
-
-    .legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-      align-items: center;
+    .latency-chart .hover-tip {
+      position: absolute; pointer-events: none; display: none;
+      padding: 4px 7px; border-radius: 6px; border: 1px solid var(--border);
+      background: #0d1213; color: var(--text); font-size: 11px; white-space: nowrap;
+      transform: translate(-50%, -120%);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
     }
-
-    .legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.4;
+    .latency-chart.hide { display: none; }
+    .icon-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; padding: 0; border-radius: 7px;
+      border: 1px solid var(--border); background: var(--panel-soft);
+      color: var(--muted); cursor: pointer; transition: color 0.15s, border-color 0.15s;
     }
-
-    .legend-item .dot {
-      width: 10px;
-      height: 10px;
-      box-shadow: none;
+    .icon-toggle:hover { color: var(--text); border-color: #3a474b; }
+    .icon-toggle.active { color: var(--accent); border-color: rgba(240,138,93,0.5); background: rgba(240,138,93,0.08); }
+    .icon-toggle svg { width: 14px; height: 14px; display: block; }
+    .instance-head-actions { display: inline-flex; gap: 6px; align-items: center; }
+    .badge.link { cursor: pointer; text-decoration: none; transition: filter 0.15s; }
+    .badge.link:hover { filter: brightness(1.2); }
+    .badge.link::after { content: " ↗"; opacity: 0.7; }
+    .metrics-block {
+      width: 100%; text-align: left; padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--panel-soft); color: inherit; font: inherit; cursor: pointer;
+      display: flex; flex-direction: column; gap: 6px;
+      transition: border-color 0.15s, background 0.15s;
     }
-
-    .link {
-      color: #f6b08f;
-      text-decoration: none;
+    .metrics-block:hover { border-color: rgba(240,138,93,0.45); background: rgba(240,138,93,0.05); }
+    .metrics-head {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
     }
-
-    .link:hover { color: #ffd7c5; }
-
-    .empty {
-      padding: 16px;
-      text-align: center;
-      color: var(--muted);
+    .metrics-link { color: var(--accent); font-weight: 700; }
+    .metrics-rows { display: grid; gap: 4px; }
+    .metrics-row {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+      font-size: 12.5px; line-height: 1.3;
     }
-
+    .metrics-label { color: var(--muted); flex: 0 0 auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .metrics-val {
+      color: var(--text); font-weight: 600; text-align: right;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    }
+    .metrics-val.muted { color: var(--muted); font-weight: 400; }
+    .metrics-error { color: var(--bad); font-size: 12px; }
+    .metrics-meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .metrics-json {
+      margin: 0; padding: 14px; border-radius: 10px; border: 1px solid var(--border);
+      background: #0d1213; color: var(--text); font-family: "Consolas", "Menlo", monospace;
+      font-size: 12.5px; line-height: 1.5; max-height: 60vh; overflow: auto;
+      white-space: pre; word-break: normal;
+    }
+    .subcheck-pill.link { cursor: pointer; transition: border-color 0.15s, color 0.15s; text-decoration: none; color: inherit; }
+    .subcheck-pill.link:hover { border-color: #3a474b; color: var(--text); }
+    .subcheck-pill.fail { border-color: rgba(255,107,107,0.35); }
+    .instance-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .instance-actions .ghost-button { padding: 5px 10px; font-size: 12px; }
+    footer.foot {
+      margin-top: 22px; color: var(--muted); font-size: 12px;
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
     .modal {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      background: rgba(8, 11, 12, 0.72);
-      backdrop-filter: blur(6px);
-      z-index: 20;
+      position: fixed; inset: 0; background: rgba(8, 12, 13, 0.62);
+      display: none; align-items: flex-start; justify-content: center;
+      padding: 32px 16px; z-index: 50; overflow-y: auto;
     }
-
     .modal.open { display: flex; }
-
     .modal-panel {
-      width: min(1180px, 100%);
-      max-height: min(92vh, 920px);
-      overflow: auto;
-      padding: 18px;
+      width: min(820px, 100%); padding: 20px 22px; max-height: calc(100vh - 64px);
+      overflow-y: auto;
     }
-
-    .modal-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 14px;
+    .modal-head { display:flex; align-items:flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .modal-title { font-weight: 700; font-size: 18px; }
+    .modal-sub { color: var(--muted); font-size: 13px; }
+    .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .tab {
+      padding: 8px 14px; border: 0; background: transparent; color: var(--muted);
+      cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
     }
-
-    .modal-title {
-      font-size: 20px;
-      font-weight: 700;
+    .tab.active { color: var(--text); border-color: var(--accent); }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .row { display: grid; gap: 10px; }
+    .row.cols-2 { grid-template-columns: 1fr 1fr; }
+    .row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .row.cols-3-1 { grid-template-columns: 1fr 1fr 0.7fr; }
+    input[type="url"], input[type="text"], input[type="number"], input[type="email"], input[type="password"], select, textarea {
+      width: 100%; padding: 9px 11px; border-radius: 8px;
+      border: 1px solid var(--border); background: #0f1416; color: var(--text);
+      font: inherit; outline: none;
     }
-
-    .manager-grid {
-      display: grid;
-      grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-      gap: 18px;
-    }
-
-    .manager-column {
-      display: grid;
-      gap: 18px;
-      align-content: start;
-    }
-
-    .auth-panel {
-      width: min(420px, 100%);
-    }
-
-    .manager-card {
-      border: 1px solid rgba(255,255,255,0.05);
-      border-radius: 12px;
-      background: var(--panel-soft);
-      padding: 14px;
-    }
-
-    .field {
-      display: grid;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .field label {
-      font-size: 13px;
-      color: #d7e4de;
-    }
-
-    input[type="url"], input[type="password"], input[type="email"] {
-      width: 100%;
-      min-height: 44px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #111718;
-      color: var(--text);
-      padding: 0 12px;
-      outline: none;
-    }
-
-    input[type="url"]:focus, input[type="password"]:focus, input[type="email"]:focus {
-      border-color: rgba(240, 138, 93, 0.35);
-      box-shadow: 0 0 0 4px rgba(240, 138, 93, 0.12);
-    }
-
-    .manager-actions, .manager-toolbar, .instance-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .manager-status {
-      min-height: 18px;
-      margin-top: 10px;
-      font-size: 13px;
-      color: #d7e6dd;
-    }
-
-    .manager-status.error { color: #ffd4d4; }
-    .manager-status.success { color: #d4ffe1; }
-
-    .toast-stack {
-      position: fixed;
-      right: 18px;
-      bottom: 18px;
-      display: grid;
-      gap: 10px;
-      z-index: 40;
-      pointer-events: none;
-      width: min(360px, calc(100vw - 24px));
-    }
-
-    .toast {
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(19, 26, 27, 0.96);
-      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
-      padding: 12px 14px;
-      color: var(--text);
-      transform: translateY(8px);
-      opacity: 0;
-      animation: toast-in 180ms ease forwards;
-    }
-
-    .toast.success {
-      border-color: rgba(54,194,109,0.28);
-      background: linear-gradient(135deg, rgba(54,194,109,0.18), rgba(19, 26, 27, 0.96));
-    }
-
-    .toast.error {
-      border-color: rgba(255,107,107,0.28);
-      background: linear-gradient(135deg, rgba(255,107,107,0.16), rgba(19, 26, 27, 0.96));
-    }
-
-    .toast.info {
-      border-color: rgba(240,138,93,0.28);
-      background: linear-gradient(135deg, rgba(240,138,93,0.16), rgba(19, 26, 27, 0.96));
-    }
-
-    .toast-title {
-      font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 4px;
-      color: #f3f8f4;
-    }
-
-    .toast-message {
-      font-size: 13px;
-      line-height: 1.4;
-      color: #d9e6e0;
-    }
-
-    @keyframes toast-in {
-      from {
-        opacity: 0;
-        transform: translateY(8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     .checkbox-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
-      color: #d7e4de;
-      font-size: 13px;
+      display: flex; align-items: center; gap: 8px; padding: 6px 0;
+      color: var(--text); font-size: 13px;
     }
-
-    .checkbox-row input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--accent);
+    .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+    .kind-toggle { display: flex; gap: 6px; }
+    .kind-toggle label {
+      flex: 1; text-align: center; padding: 10px; border-radius: 9px;
+      border: 1px solid var(--border); cursor: pointer; font-weight: 600; font-size: 13px;
+      color: var(--muted); text-transform: none; letter-spacing: 0;
     }
-
-    .manager-card-title {
-      font-weight: 700;
-      margin-bottom: 12px;
+    .kind-toggle input { display: none; }
+    .kind-toggle input:checked + span {
+      color: var(--text);
     }
-
-    .managed-list {
-      display: grid;
-      gap: 10px;
+    .kind-toggle label:has(input:checked) { border-color: var(--accent); background: rgba(240,138,93,0.08); color: var(--text); }
+    .actions-row { display: flex; gap: 8px; margin-top: 8px; }
+    .status { font-size: 13px; padding: 8px 0; min-height: 18px; }
+    .status.success { color: var(--ok); }
+    .status.error { color: var(--bad); }
+    .toast {
+      position: fixed; right: 22px; bottom: 22px; max-width: 360px;
+      padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--panel); box-shadow: 0 10px 30px rgba(0,0,0,0.4); z-index: 60;
+      display: none;
     }
-
-    .managed-item {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px;
-      border-radius: 10px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.04);
+    .toast.open { display: block; }
+    .toast.success { border-color: rgba(54,194,109,0.45); }
+    .toast.error { border-color: rgba(255,107,107,0.45); }
+    .toast-title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+    .toast-body { font-size: 12px; color: var(--muted); }
+    .subcheck-card {
+      border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+      margin-bottom: 10px; background: var(--panel-soft);
     }
-
-    .managed-copy {
-      min-width: 0;
-      display: grid;
-      gap: 6px;
+    .subcheck-card .row { margin-bottom: 8px; }
+    .subcheck-card-head { display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+    .group-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+      margin-bottom: 8px; background: var(--panel-soft);
     }
-
-    .managed-meta {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .icon-button {
-      min-width: 36px;
-      width: 36px;
-      height: 36px;
-      min-height: 36px;
-      padding: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      line-height: 1;
-      border-radius: 999px;
-      color: #aab7b2;
-      background: rgba(255,255,255,0.03);
-      border-color: rgba(255,255,255,0.06);
-      box-shadow: none;
-      flex: none;
-      margin-left: auto;
-    }
-
-    .icon-button:hover {
-      color: #d7e4de;
-      background: rgba(255,255,255,0.06);
-      border-color: rgba(255,255,255,0.12);
-    }
-
-    .subscribe-endpoint {
-      color: #dfeae4;
-      font-size: 14px;
-      line-height: 1.5;
-      word-break: break-word;
-      margin-bottom: 12px;
-    }
-
-    .subscriptions-list {
-      display: grid;
-      gap: 10px;
-    }
-
-    .subscription-item {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 14px;
-      padding: 12px;
-      border-radius: 10px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.04);
-    }
-
-    .subscription-copy {
-      min-width: 0;
-      display: grid;
-      gap: 6px;
-    }
-
-    .subscription-email {
-      color: #f3f8f4;
-      font-size: 14px;
-      font-weight: 700;
-      word-break: break-word;
-    }
-
-    @media (max-width: 860px) {
-      .banner, .instance-head, .managed-item, .subscription-item, .modal-head {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      .banner-actions, .instance-meta {
-        justify-items: start;
-        justify-content: flex-start;
-        text-align: left;
-      }
-
-      .banner-meta, .banner-buttons {
-        text-align: left;
-        justify-content: flex-start;
-      }
-
-      .manager-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .timeline {
-        height: auto;
-      }
-    }
+    .group-row-actions { display: flex; gap: 6px; }
+    .help { color: var(--muted); font-size: 12px; margin-top: -4px; margin-bottom: 12px; }
   </style>
 </head>
 <body>
-  <main class="shell">
-    <section class="banner">
-      <div class="banner-main">
-        <span class="dot operational" id="summary-dot"></span>
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
         <div>
-          <div class="banner-title" id="summary-title">Loading status...</div>
-          <div class="banner-subtitle" id="summary-subtitle">Pulling the latest monitor history.</div>
+          <h1>Tidal Status</h1>
+          <div class="small">Last updated <span id="last-updated">—</span> · refreshes every <span id="refresh-interval">—</span></div>
         </div>
       </div>
-      <div class="banner-actions">
-        <div class="banner-meta">Last updated: <strong id="last-updated">n/a</strong> · updates every <strong id="refresh-interval">5m</strong> · actual API <strong id="reference-api-version">n/a</strong></div>
-        <div class="banner-buttons">
-          <button class="button" id="subscriptions-button" type="button" hidden>Subscriptions</button>
-          <button class="button primary" id="manage-button" type="button">Manage instances</button>
-          <a class="ghost-button link" href="/status.json" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;">status.json</a>
-        </div>
+      <div class="topbar-actions">
+        <button class="ghost-button" id="refresh-button" type="button">Refresh now</button>
+        <button class="ghost-button" id="manage-button" type="button">Manage</button>
+        <button class="ghost-button" id="logout-button" type="button">Logout</button>
+      </div>
+    </div>
+
+    <section class="card summary">
+      <div class="summary-dot" id="summary-dot"></div>
+      <div>
+        <div class="summary-title" id="summary-title">Loading…</div>
+        <div class="summary-sub" id="summary-sub"></div>
+      </div>
+      <div class="summary-stats">
+        <div><b id="stat-api">0</b><br><span>API alive</span></div>
+        <div><b id="stat-stream">0</b><br><span>Streaming</span></div>
+        <div><b id="stat-down">0</b><br><span>Down</span></div>
       </div>
     </section>
 
-    <section class="card group">
-      <div class="group-title">
-        <div class="group-title-main">
-          <span>Tidal Instances</span>
-          <span class="hint-wrap">
-            <span class="hint-badge" tabindex="0" aria-label="Status legend">?</span>
-            <span class="hint-tooltip" role="tooltip">
-              <span class="hint-tooltip-title">Status legend</span>
-              <span class="hint-tooltip-list">
-                <span class="hint-tooltip-item">
-                  <span class="hint-tooltip-dot operational"></span>
-                  <span><strong>Operational</strong>: track check works</span>
-                </span>
-                <span class="hint-tooltip-item">
-                  <span class="hint-tooltip-dot degraded"></span>
-                  <span><strong>Degraded</strong>: API works, but search or track fails</span>
-                </span>
-                <span class="hint-tooltip-item">
-                  <span class="hint-tooltip-dot outage"></span>
-                  <span><strong>Outage</strong>: base API is unreachable</span>
-                </span>
-              </span>
-            </span>
-          </span>
+    <main id="groups-container"></main>
+
+    <footer class="foot">
+      <div id="footer-stats">—</div>
+      <div>Status data <a href="/status.json" target="_blank" rel="noreferrer">/status.json</a></div>
+    </footer>
+  </div>
+
+  <!-- Manager modal -->
+  <div class="modal" id="manage-modal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Manager</div>
+          <div class="modal-sub">Configure monitors, groups, and email subscriptions.</div>
         </div>
-        <span class="group-summary" id="group-summary">Recent checks</span>
+        <button class="ghost-button" id="close-manage" type="button">Close</button>
       </div>
-      <div class="stack" id="status-list"></div>
-    </section>
-
-    <div class="footer">
-      <span id="footer-stats">0 instances</span>
-      <div class="legend">
-        <span class="legend-item"><span class="dot operational"></span>Operational: track check works</span>
-        <span class="legend-item"><span class="dot degraded"></span>Degraded: API works, but search or track fails</span>
-        <span class="legend-item"><span class="dot outage"></span>Outage: base API is unreachable</span>
+      <div class="tabs">
+        <button class="tab active" data-tab="instances" type="button">Monitors</button>
+        <button class="tab" data-tab="groups" type="button">Groups</button>
+        <button class="tab" data-tab="subscriptions" type="button">Subscriptions</button>
       </div>
-    </div>
-  </main>
 
-    <div class="modal" id="manager-modal" aria-hidden="true">
-      <div class="modal-panel">
-        <div class="modal-head">
-          <div>
-            <div class="modal-title">Instance Manager</div>
-            <div class="small">Add, edit or delete monitored endpoints. Endpoint edits recheck only the affected API, and alert presets can be applied to all instances at once.</div>
-          </div>
-          <div class="instance-actions">
-            <button class="ghost-button danger" id="logout-button" style="margin-right: 20px;" type="button">Logout</button>
-            <button class="ghost-button" id="close-modal" type="button">Close</button>
-          </div>
+      <section data-pane="instances">
+        <div class="actions-row" style="margin-bottom: 10px;">
+          <button class="button primary" id="add-instance" type="button">+ Add monitor</button>
+          <button class="ghost-button" id="disable-all-alerts" type="button">Disable alerts on all monitors</button>
         </div>
+        <div id="instance-list"></div>
+      </section>
 
-      <div class="manager-grid">
-        <div class="manager-column">
-          <section class="manager-card">
-            <div class="manager-card-title" id="form-title">Add instance</div>
-            <form id="instance-form">
-              <div class="field">
-                <label for="instance-url">Endpoint URL</label>
-                <input id="instance-url" name="url" type="url" placeholder="https://example.com" required>
-              </div>
-              <label class="checkbox-row" for="alerts-enabled">
-                <input id="alerts-enabled" name="alertsEnabled" type="checkbox" checked>
-                <span>Enable Discord alerts for this instance (send alerts to the configured Discord webhook)</span>
-              </label>
-              <label class="checkbox-row" for="email-alerts-enabled">
-                <input id="email-alerts-enabled" name="emailAlertsEnabled" type="checkbox" checked>
-                <span>Enable Email alerts for this instance (send alerts to email)</span>
-              </label>
-              <label class="checkbox-row" for="alert-on-outage">
-                <input id="alert-on-outage" name="alertOnOutage" type="checkbox" checked>
-                <span>Send Outage alerts (base API does not work)</span>
-              </label>
-              <label class="checkbox-row" for="alert-on-search">
-                <input id="alert-on-search" name="alertOnSearch" type="checkbox" checked>
-                <span>Send Search alerts (search check fails)</span>
-              </label>
-              <label class="checkbox-row" for="alert-on-track">
-                <input id="alert-on-track" name="alertOnTrack" type="checkbox" checked>
-                <span>Send Track alerts (track check fails)</span>
-              </label>
-              <label class="checkbox-row" for="alert-on-recovery">
-                <input id="alert-on-recovery" name="alertOnRecovery" type="checkbox" checked>
-                <span>Send Recovery notifications</span>
-              </label>
-              <div class="manager-actions">
-                <button class="button primary" id="submit-button" type="submit">Add instance</button>
-                <button class="ghost-button" id="cancel-button" type="button" hidden>Cancel</button>
-              </div>
-            </form>
-            <div class="manager-status" id="manager-status"></div>
-          </section>
-
-          <section class="manager-card">
-            <div class="manager-card-title">Apply to all instances</div>
-            <form id="bulk-settings-form">
-              <label class="checkbox-row" for="bulk-alerts-enabled">
-                <input id="bulk-alerts-enabled" name="alertsEnabled" type="checkbox" checked>
-                <span>Enable Discord alerts for all instances (send alerts to the configured Discord webhook)</span>
-              </label>
-              <label class="checkbox-row" for="bulk-email-alerts-enabled">
-                <input id="bulk-email-alerts-enabled" name="emailAlertsEnabled" type="checkbox" checked>
-                <span>Enable Email alerts for all instances (send alerts to email)</span>
-              </label>
-              <label class="checkbox-row" for="bulk-alert-on-outage">
-                <input id="bulk-alert-on-outage" name="alertOnOutage" type="checkbox" checked>
-                <span>Send Outage alerts (base API does not work)</span>
-              </label>
-              <label class="checkbox-row" for="bulk-alert-on-search">
-                <input id="bulk-alert-on-search" name="alertOnSearch" type="checkbox" checked>
-                <span>Send Search alerts (search check fails)</span>
-              </label>
-              <label class="checkbox-row" for="bulk-alert-on-track">
-                <input id="bulk-alert-on-track" name="alertOnTrack" type="checkbox" checked>
-                <span>Send Track alerts (track check fails)</span>
-              </label>
-              <label class="checkbox-row" for="bulk-alert-on-recovery">
-                <input id="bulk-alert-on-recovery" name="alertOnRecovery" type="checkbox" checked>
-                <span>Send Recovery notifications</span>
-              </label>
-              <div class="manager-actions">
-                <button class="button primary" id="bulk-submit-button" type="submit">Apply to all instances</button>
-              </div>
-            </form>
-            <div class="manager-status" id="bulk-status"></div>
-          </section>
-        </div>
-
-        <section class="manager-card">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
-            <div style="font-weight:700;">Managed instances</div>
-            <span class="small" id="instance-count-label">0 items</span>
+      <section data-pane="groups" hidden>
+        <form id="group-form" class="card" style="padding:14px 16px; margin-bottom: 12px;">
+          <div class="row cols-2">
+            <div class="field">
+              <label for="group-name">Group name</label>
+              <input id="group-name" type="text" required>
+            </div>
+            <div class="field">
+              <label for="group-sort">Sort order</label>
+              <input id="group-sort" type="number" value="0">
+            </div>
           </div>
-          <div class="managed-list" id="instance-list"></div>
-        </section>
-      </div>
-      </div>
-    </div>
-
-    <div class="modal" id="auth-modal" aria-hidden="true">
-      <div class="modal-panel auth-panel">
-        <div class="modal-head">
-          <div>
-            <div class="modal-title">Manage instances</div>
-            <div class="small">Enter the admin password to access the instance manager.</div>
+          <div class="actions-row">
+            <button class="button primary" id="group-submit" type="submit">Add group</button>
+            <button class="ghost-button" id="group-cancel" type="button" hidden>Cancel</button>
           </div>
-          <button class="ghost-button" id="close-auth-modal" type="button">Close</button>
-        </div>
-        <form id="auth-form">
-          <div class="field">
-            <label for="auth-password">Password</label>
-            <input id="auth-password" name="password" type="password" autocomplete="current-password" required>
-          </div>
-          <div class="manager-actions">
-            <button class="button primary" id="auth-submit" type="submit">Unlock</button>
-          </div>
+          <div class="status" id="group-status"></div>
         </form>
-        <div class="manager-status" id="auth-status"></div>
-      </div>
-    </div>
+        <div id="group-list"></div>
+      </section>
 
-    <div class="modal" id="subscribe-modal" aria-hidden="true">
-      <div class="modal-panel auth-panel">
-        <div class="modal-head">
-          <div>
-            <div class="modal-title">Email alerts</div>
-            <div class="small">Subscribe to alerts for a specific API endpoint.</div>
-          </div>
-          <button class="ghost-button" id="close-subscribe-modal" type="button">Close</button>
+      <section data-pane="subscriptions" hidden>
+        <p class="help">Email subscriptions are managed per-monitor. Click the bell icon on the status page to add an email for a specific monitor.</p>
+        <div id="subscriptions-list"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Instance form modal -->
+  <div class="modal" id="instance-modal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title" id="instance-form-title">Add monitor</div>
+          <div class="modal-sub">Define what to check, response matching, optional sub-checks, and alerting.</div>
         </div>
-        <div class="subscribe-endpoint" id="subscribe-endpoint-label"></div>
-        <form id="subscribe-form">
+        <button class="ghost-button" id="close-instance" type="button">Close</button>
+      </div>
+      <form id="instance-form">
+        <div class="row cols-2">
           <div class="field">
-            <label for="subscribe-email">Email</label>
-            <input id="subscribe-email" name="email" type="email" placeholder="name@example.com" autocomplete="email" required>
+            <label for="inst-url">URL</label>
+            <input id="inst-url" type="url" placeholder="https://example.com" required>
           </div>
-          <div class="manager-actions">
-            <button class="button primary" id="subscribe-submit" type="submit">Subscribe</button>
+          <div class="field">
+            <label for="inst-name">Display name (optional)</label>
+            <input id="inst-name" type="text" placeholder="Auto from URL">
           </div>
-        </form>
-        <div class="manager-status" id="subscribe-status"></div>
-      </div>
-    </div>
-
-    <div class="modal" id="subscriptions-modal" aria-hidden="true">
-      <div class="modal-panel" style="width:min(860px, 100%);">
-        <div class="modal-head">
-          <div>
-            <div class="modal-title">Email subscriptions</div>
-            <div class="small">All alert subscriptions currently stored in the monitor.</div>
-          </div>
-          <button class="ghost-button" id="close-subscriptions-modal" type="button">Close</button>
         </div>
-        <div class="subscriptions-list" id="subscriptions-list"></div>
-        <div class="manager-status" id="subscriptions-status"></div>
-      </div>
-    </div>
 
-    <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+        <div class="row cols-2">
+          <div class="field">
+            <label>Type</label>
+            <div class="kind-toggle">
+              <label><input type="radio" name="kind" value="tidal" checked><span>Tidal (api/search/track)</span></label>
+              <label><input type="radio" name="kind" value="http"><span>Generic HTTP</span></label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="inst-group">Group</label>
+            <select id="inst-group"></select>
+          </div>
+        </div>
+
+        <div id="http-fields" hidden>
+          <div class="row cols-3-1">
+            <div class="field">
+              <label for="inst-method">Method</label>
+              <select id="inst-method">
+                <option>GET</option><option>POST</option><option>HEAD</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="inst-expected-status">Expected status (optional)</label>
+              <input id="inst-expected-status" type="number" placeholder="default: any 2xx/3xx">
+            </div>
+            <div class="field">
+              <label for="inst-match-type">Response match</label>
+              <select id="inst-match-type">
+                <option value="">None</option>
+                <option value="status">Status only</option>
+                <option value="json_key">JSON key exists</option>
+                <option value="json_equals">JSON key equals</option>
+                <option value="contains">Body contains</option>
+              </select>
+            </div>
+          </div>
+          <div class="row cols-2" id="match-detail-row">
+            <div class="field">
+              <label for="inst-match-path">JSON path (e.g. data.items.0.id)</label>
+              <input id="inst-match-path" type="text" placeholder="leave empty for root">
+            </div>
+            <div class="field">
+              <label for="inst-match-value">Expected value / substring</label>
+              <input id="inst-match-value" type="text">
+            </div>
+          </div>
+          <p class="help">JSON path uses dotted notation; arrays accept either <code>key[0]</code> or <code>key.0</code>.</p>
+
+          <div class="field">
+            <label for="inst-metrics-url">Info URL (optional)</label>
+            <input id="inst-metrics-url" type="url" placeholder="https://example.com/info.json">
+          </div>
+          <div class="field">
+            <label for="inst-metrics-keys">Info keys to display (one per line)</label>
+            <textarea id="inst-metrics-keys" rows="4" placeholder="status as Status&#10;nodes[0].name as Primary node&#10;queue.depth"></textarea>
+            <p class="help">One JSON path per line. Optional label after <code>as</code>. The raw JSON stays available via the card.</p>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top: 6px;">
+          <label>Sub-checks (extra requests for this monitor)</label>
+          <div id="subchecks-list"></div>
+          <button class="ghost-button" id="add-subcheck" type="button">+ Add sub-check</button>
+        </div>
+
+        <div class="row cols-2" style="margin-top: 12px;">
+          <div>
+            <label class="checkbox-row"><input type="checkbox" id="email-alerts-enabled"><span>Email alerts enabled (only sent if someone is subscribed to this monitor)</span></label>
+            <label class="checkbox-row"><input type="checkbox" id="alert-recovery"><span>Send recovery notifications</span></label>
+          </div>
+          <div>
+            <label class="checkbox-row"><input type="checkbox" id="alert-outage"><span>Alert on primary failure (outage)</span></label>
+            <label class="checkbox-row"><input type="checkbox" id="alert-search"><span>Alert on search/sub-check failure</span></label>
+            <label class="checkbox-row"><input type="checkbox" id="alert-track"><span>Alert on track failure (Tidal)</span></label>
+          </div>
+        </div>
+
+        <div class="actions-row">
+          <button class="button primary" id="instance-submit" type="submit">Save monitor</button>
+          <button class="ghost-button" id="instance-delete" type="button" hidden>Delete</button>
+        </div>
+        <div class="status" id="instance-status"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Metrics modal -->
+  <div class="modal" id="metrics-modal" aria-hidden="true">
+    <div class="modal-panel" style="width: min(720px, 100%);">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Info</div>
+          <div class="modal-sub" id="metrics-target">—</div>
+        </div>
+        <button class="ghost-button" id="close-metrics" type="button">Close</button>
+      </div>
+      <div id="metrics-meta" class="metrics-meta"></div>
+      <pre class="metrics-json" id="metrics-json">Loading…</pre>
+    </div>
+  </div>
+
+  <!-- Subscribe modal -->
+  <div class="modal" id="subscribe-modal" aria-hidden="true">
+    <div class="modal-panel" style="max-width: 460px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Email alerts</div>
+          <div class="modal-sub" id="subscribe-target">—</div>
+        </div>
+        <button class="ghost-button" id="close-subscribe" type="button">Close</button>
+      </div>
+      <form id="subscribe-form">
+        <div class="field">
+          <label for="subscribe-email">Email</label>
+          <input id="subscribe-email" type="email" required>
+        </div>
+        <div class="actions-row">
+          <button class="button primary" type="submit">Subscribe</button>
+        </div>
+        <div class="status" id="subscribe-status"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Auth modal (re-login on cookie expiry) -->
+  <div class="modal" id="auth-modal" aria-hidden="true">
+    <div class="modal-panel" style="max-width: 380px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Session expired</div>
+          <div class="modal-sub">Re-enter the admin password to continue.</div>
+        </div>
+      </div>
+      <form id="auth-form">
+        <div class="field">
+          <label for="auth-password">Password</label>
+          <input id="auth-password" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="actions-row">
+          <button class="button primary" type="submit">Unlock</button>
+        </div>
+        <div class="status" id="auth-status"></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <div class="toast-title" id="toast-title"></div>
+    <div class="toast-body" id="toast-body"></div>
+  </div>
 
   <script>
-    const pageEndpoint = "/api/status-page";
-    const instancesEndpoint = "/api/instances";
-    const subscriptionsEndpoint = "/api/subscriptions";
-    const authStatusEndpoint = "/api/auth/status";
-    const authLoginEndpoint = "/api/auth/login";
-    const authLogoutEndpoint = "/api/auth/logout";
-    const state = {
-      editingId: null,
-      authenticated: false,
-      subscribeEndpointId: null,
-      subscribeEndpointUrl: "",
-      historyWindowPoints: 96,
-      historyWindowHours: 8,
-      checkIntervalSeconds: 300,
-      emailAlertingEnabled: false,
-      referenceApiVersion: null
-    };
+    const escapeHtml = (s) => String(s ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-    const refreshMs = 30000;
+    const state = {
+      groups: [],
+      instances: [],
+      checkIntervalSeconds: 60,
+      editingId: null,
+      subscribeFor: null,
+      subchecks: [],
+      groupEditingId: null,
+    };
 
     const refs = {
-      summaryDot: document.getElementById("summary-dot"),
-      summaryTitle: document.getElementById("summary-title"),
-      summarySubtitle: document.getElementById("summary-subtitle"),
       lastUpdated: document.getElementById("last-updated"),
       refreshInterval: document.getElementById("refresh-interval"),
-      referenceApiVersion: document.getElementById("reference-api-version"),
-      groupSummary: document.getElementById("group-summary"),
-      statusList: document.getElementById("status-list"),
+      summaryDot: document.getElementById("summary-dot"),
+      summaryTitle: document.getElementById("summary-title"),
+      summarySub: document.getElementById("summary-sub"),
+      statApi: document.getElementById("stat-api"),
+      statStream: document.getElementById("stat-stream"),
+      statDown: document.getElementById("stat-down"),
+      groupsContainer: document.getElementById("groups-container"),
       footerStats: document.getElementById("footer-stats"),
-      subscriptionsButton: document.getElementById("subscriptions-button"),
-      manageButton: document.getElementById("manage-button"),
-      modal: document.getElementById("manager-modal"),
-      closeModal: document.getElementById("close-modal"),
-      logoutButton: document.getElementById("logout-button"),
-      form: document.getElementById("instance-form"),
-      formTitle: document.getElementById("form-title"),
-      urlInput: document.getElementById("instance-url"),
-      alertsEnabledInput: document.getElementById("alerts-enabled"),
-      emailAlertsEnabledInput: document.getElementById("email-alerts-enabled"),
-      alertOnOutageInput: document.getElementById("alert-on-outage"),
-      alertOnSearchInput: document.getElementById("alert-on-search"),
-      alertOnTrackInput: document.getElementById("alert-on-track"),
-      alertOnRecoveryInput: document.getElementById("alert-on-recovery"),
-      submitButton: document.getElementById("submit-button"),
-      cancelButton: document.getElementById("cancel-button"),
-      managerStatus: document.getElementById("manager-status"),
-      bulkForm: document.getElementById("bulk-settings-form"),
-      bulkAlertsEnabledInput: document.getElementById("bulk-alerts-enabled"),
-      bulkEmailAlertsEnabledInput: document.getElementById("bulk-email-alerts-enabled"),
-      bulkAlertOnOutageInput: document.getElementById("bulk-alert-on-outage"),
-      bulkAlertOnSearchInput: document.getElementById("bulk-alert-on-search"),
-      bulkAlertOnTrackInput: document.getElementById("bulk-alert-on-track"),
-      bulkAlertOnRecoveryInput: document.getElementById("bulk-alert-on-recovery"),
-      bulkSubmitButton: document.getElementById("bulk-submit-button"),
-      bulkStatus: document.getElementById("bulk-status"),
-      instanceList: document.getElementById("instance-list"),
-      instanceCountLabel: document.getElementById("instance-count-label"),
+      manageBtn: document.getElementById("manage-button"),
+      refreshBtn: document.getElementById("refresh-button"),
+      logoutBtn: document.getElementById("logout-button"),
+      manageModal: document.getElementById("manage-modal"),
+      closeManage: document.getElementById("close-manage"),
+      instanceModal: document.getElementById("instance-modal"),
+      closeInstance: document.getElementById("close-instance"),
+      subscribeModal: document.getElementById("subscribe-modal"),
+      closeSubscribe: document.getElementById("close-subscribe"),
       authModal: document.getElementById("auth-modal"),
-      closeAuthModal: document.getElementById("close-auth-modal"),
+      metricsModal: document.getElementById("metrics-modal"),
+      closeMetrics: document.getElementById("close-metrics"),
+      metricsTarget: document.getElementById("metrics-target"),
+      metricsMeta: document.getElementById("metrics-meta"),
+      metricsJson: document.getElementById("metrics-json"),
+      addInstanceBtn: document.getElementById("add-instance"),
+      instanceList: document.getElementById("instance-list"),
+      groupList: document.getElementById("group-list"),
+      subscriptionsList: document.getElementById("subscriptions-list"),
+      groupForm: document.getElementById("group-form"),
+      groupName: document.getElementById("group-name"),
+      groupSort: document.getElementById("group-sort"),
+      groupSubmit: document.getElementById("group-submit"),
+      groupCancel: document.getElementById("group-cancel"),
+      groupStatus: document.getElementById("group-status"),
+      instanceForm: document.getElementById("instance-form"),
+      instanceFormTitle: document.getElementById("instance-form-title"),
+      instUrl: document.getElementById("inst-url"),
+      instName: document.getElementById("inst-name"),
+      instGroup: document.getElementById("inst-group"),
+      instMethod: document.getElementById("inst-method"),
+      instExpectedStatus: document.getElementById("inst-expected-status"),
+      instMatchType: document.getElementById("inst-match-type"),
+      instMatchPath: document.getElementById("inst-match-path"),
+      instMatchValue: document.getElementById("inst-match-value"),
+      instMetricsUrl: document.getElementById("inst-metrics-url"),
+      instMetricsKeys: document.getElementById("inst-metrics-keys"),
+      httpFields: document.getElementById("http-fields"),
+      kindRadios: document.querySelectorAll("input[name='kind']"),
+      subchecksList: document.getElementById("subchecks-list"),
+      addSubcheck: document.getElementById("add-subcheck"),
+      emailAlerts: document.getElementById("email-alerts-enabled"),
+      alertRecovery: document.getElementById("alert-recovery"),
+      alertOutage: document.getElementById("alert-outage"),
+      alertSearch: document.getElementById("alert-search"),
+      alertTrack: document.getElementById("alert-track"),
+      instanceSubmit: document.getElementById("instance-submit"),
+      instanceDelete: document.getElementById("instance-delete"),
+      instanceStatus: document.getElementById("instance-status"),
+      subscribeForm: document.getElementById("subscribe-form"),
+      subscribeEmail: document.getElementById("subscribe-email"),
+      subscribeTarget: document.getElementById("subscribe-target"),
+      subscribeStatus: document.getElementById("subscribe-status"),
       authForm: document.getElementById("auth-form"),
       authPassword: document.getElementById("auth-password"),
-      authSubmit: document.getElementById("auth-submit"),
       authStatus: document.getElementById("auth-status"),
-      subscribeModal: document.getElementById("subscribe-modal"),
-      closeSubscribeModal: document.getElementById("close-subscribe-modal"),
-      subscribeForm: document.getElementById("subscribe-form"),
-      subscribeEndpointLabel: document.getElementById("subscribe-endpoint-label"),
-      subscribeEmail: document.getElementById("subscribe-email"),
-      subscribeSubmit: document.getElementById("subscribe-submit"),
-      subscribeStatus: document.getElementById("subscribe-status"),
-      subscriptionsModal: document.getElementById("subscriptions-modal"),
-      closeSubscriptionsModal: document.getElementById("close-subscriptions-modal"),
-      subscriptionsList: document.getElementById("subscriptions-list"),
-      subscriptionsStatus: document.getElementById("subscriptions-status"),
-      toastStack: document.getElementById("toast-stack")
+      toast: document.getElementById("toast"),
+      toastTitle: document.getElementById("toast-title"),
+      toastBody: document.getElementById("toast-body"),
     };
 
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
+    let toastTimer = null;
+    function showToast(title, body, kind = "") {
+      refs.toast.className = "toast open " + kind;
+      refs.toastTitle.textContent = title;
+      refs.toastBody.textContent = body || "";
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { refs.toast.classList.remove("open"); }, 3500);
     }
 
-    function formatTime(value) {
-      if (!value) return "n/a";
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return escapeHtml(value);
-      return date.toLocaleString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        timeZoneName: "short"
-      });
-    }
-
-    function stateLabel(stateValue) {
-      return {
-        operational: "Operational",
-        degraded: "Degraded",
-        outage: "Outage",
-        unknown: "Unknown"
-      }[stateValue] || "Unknown";
-    }
-
-    function formatIntervalLabel(seconds) {
-      const value = Number(seconds) || 0;
-      if (value <= 0) return "n/a";
-      if (value % 3600 === 0) return `${value / 3600}h`;
-      if (value % 60 === 0) return `${value / 60}m`;
-      return `${value}s`;
-    }
-
-    function normalizeHistoryEntry(entry) {
-      if (entry && typeof entry === "object") {
-        return {
-          state: entry.state || "unknown",
-          lastUpdated: entry.lastUpdated || null,
-          statusCode: entry.statusCode ?? null,
-          error: entry.error || null
-        };
-      }
-
-      return {
-        state: typeof entry === "string" ? entry : "unknown",
-        lastUpdated: null,
-        statusCode: null,
-        error: null
-      };
-    }
-
-    function normalizeVersionValue(value) {
-      return String(value || "").trim().replaceAll(",", ".");
-    }
-
-    function parseVersionSegments(value) {
-      const normalized = normalizeVersionValue(value);
-      if (!normalized) return null;
-
-      const parts = normalized.split(".");
-      if (parts.some((part) => !/^\\d+$/.test(part))) {
-        return null;
-      }
-
-      return parts.map((part) => Number(part));
-    }
-
-    function compareVersions(left, right) {
-      const leftParts = parseVersionSegments(left);
-      const rightParts = parseVersionSegments(right);
-      if (!leftParts || !rightParts) return null;
-
-      const length = Math.max(leftParts.length, rightParts.length);
-      for (let index = 0; index < length; index += 1) {
-        const leftValue = leftParts[index] ?? 0;
-        const rightValue = rightParts[index] ?? 0;
-        if (leftValue < rightValue) return -1;
-        if (leftValue > rightValue) return 1;
-      }
-
-      return 0;
-    }
-
-    function versionBadgeClass(version) {
-      if (!version) return "unknown";
-
-      const comparison = compareVersions(version, state.referenceApiVersion);
-      if (comparison === 0) return "current";
-      if (comparison !== null && comparison < 0) return "outdated";
-      return "unknown";
-    }
-
-    function historyBarTitle(entry) {
-      const lines = [stateLabel(entry.state)];
-
-      if (entry.lastUpdated) {
-        lines.push(`Time: ${formatTime(entry.lastUpdated)}`);
-      }
-
-      if (entry.state === "degraded" || entry.state === "outage") {
-        lines.push(`Reason: ${historyReasonLabel(entry)}`);
-      }
-
-      return lines.join("\\n");
-    }
-
-    function historyReasonLabel(entry) {
-      if (entry.error) {
-        const statusSuffix = entry.statusCode ? ` (${entry.statusCode})` : "";
-        return `${entry.error}${statusSuffix}`;
-      }
-
-      if (entry.state === "outage") {
-        return "Endpoint was unreachable during this check";
-      }
-
-      if (entry.state === "degraded") {
-        return "Base API responded, but one of the feature checks failed";
-      }
-
-      return "No additional details";
-    }
-
-    function setManagerStatus(message, kind = "") {
-      refs.managerStatus.textContent = message;
-      refs.managerStatus.className = `manager-status ${kind}`.trim();
-    }
-
-    function setBulkStatus(message, kind = "") {
-      refs.bulkStatus.textContent = message;
-      refs.bulkStatus.className = `manager-status ${kind}`.trim();
-    }
-
-    function setAuthStatus(message, kind = "") {
-      refs.authStatus.textContent = message;
-      refs.authStatus.className = `manager-status ${kind}`.trim();
-    }
-
-    function setSubscribeStatus(message, kind = "") {
-      refs.subscribeStatus.textContent = message;
-      refs.subscribeStatus.className = `manager-status ${kind}`.trim();
-    }
-
-    function setSubscriptionsStatus(message, kind = "") {
-      refs.subscriptionsStatus.textContent = message;
-      refs.subscriptionsStatus.className = `manager-status ${kind}`.trim();
-    }
-
-    function showToast(message, kind = "info", title = "") {
-      if (!message) return;
-
-      const toast = document.createElement("div");
-      toast.className = `toast ${kind}`.trim();
-      const resolvedTitle =
-        title || (kind === "success" ? "Success" : kind === "error" ? "Error" : "Notice");
-
-      toast.innerHTML = `
-        <div class="toast-title">${escapeHtml(resolvedTitle)}</div>
-        <div class="toast-message">${escapeHtml(message)}</div>
-      `;
-      refs.toastStack.appendChild(toast);
-
-      window.setTimeout(() => {
-        toast.style.opacity = "0";
-        toast.style.transform = "translateY(8px)";
-        toast.style.transition = "opacity 180ms ease, transform 180ms ease";
-        window.setTimeout(() => toast.remove(), 220);
-      }, 2600);
-    }
-
-    function updateManageButton() {
-      refs.manageButton.textContent = state.authenticated ? "Manage instances" : "Login";
-      refs.subscriptionsButton.hidden = !state.authenticated;
-    }
-
-    function resetForm() {
-      state.editingId = null;
-      refs.form.reset();
-      refs.formTitle.textContent = "Add instance";
-      refs.submitButton.textContent = "Add instance";
-      refs.alertsEnabledInput.checked = true;
-      refs.emailAlertsEnabledInput.checked = true;
-      refs.alertOnOutageInput.checked = true;
-      refs.alertOnSearchInput.checked = true;
-      refs.alertOnTrackInput.checked = true;
-      refs.alertOnRecoveryInput.checked = true;
-      refs.cancelButton.hidden = true;
-    }
-
-    function openModal() {
-      refs.modal.classList.add("open");
-      refs.modal.setAttribute("aria-hidden", "false");
-    }
-
-    function closeModal() {
-      refs.modal.classList.remove("open");
-      refs.modal.setAttribute("aria-hidden", "true");
-      resetForm();
-      setManagerStatus("");
-      setBulkStatus("");
-    }
-
-    function openAuthModal() {
-      refs.authModal.classList.add("open");
-      refs.authModal.setAttribute("aria-hidden", "false");
-      refs.authPassword.focus();
-    }
-
-    function closeAuthModal() {
-      refs.authModal.classList.remove("open");
-      refs.authModal.setAttribute("aria-hidden", "true");
-      refs.authForm.reset();
-      setAuthStatus("");
-    }
-
-    function openSubscribeModal(endpointId, endpointUrl) {
-      state.subscribeEndpointId = endpointId;
-      state.subscribeEndpointUrl = endpointUrl;
-      refs.subscribeEndpointLabel.textContent = endpointUrl;
-      refs.subscribeModal.classList.add("open");
-      refs.subscribeModal.setAttribute("aria-hidden", "false");
-      refs.subscribeEmail.focus();
-    }
-
-    function closeSubscribeModal() {
-      refs.subscribeModal.classList.remove("open");
-      refs.subscribeModal.setAttribute("aria-hidden", "true");
-      refs.subscribeForm.reset();
-      state.subscribeEndpointId = null;
-      state.subscribeEndpointUrl = "";
-      setSubscribeStatus("");
-    }
-
-    function openSubscriptionsModal() {
-      refs.subscriptionsModal.classList.add("open");
-      refs.subscriptionsModal.setAttribute("aria-hidden", "false");
-    }
-
-    function closeSubscriptionsModal() {
-      refs.subscriptionsModal.classList.remove("open");
-      refs.subscriptionsModal.setAttribute("aria-hidden", "true");
-      setSubscriptionsStatus("");
-    }
-
-    function buildHistoryBars(history) {
-      const values = Array.isArray(history) ? history.map(normalizeHistoryEntry) : [];
-      const historyPoints = Math.max(Number(state.historyWindowPoints) || 1, 1);
-      const normalized = values.length >= historyPoints
-        ? values.slice(values.length - historyPoints)
-        : [...Array(historyPoints - values.length).fill(null).map(() => normalizeHistoryEntry(null)), ...values];
-      return normalized.map((item) => (
-        `<span class="bar tooltip-anchor ${escapeHtml(item.state)}" data-tooltip="${escapeHtml(historyBarTitle(item))}"></span>`
-      )).join("");
-    }
-
-    function renderInstance(item) {
-      const version = item.version ? `v${item.version}` : "no version";
-      const versionClass = versionBadgeClass(item.version);
-      const uptimeText = item.uptimePercentage === null || item.uptimePercentage === undefined
-        ? "n/a"
-        : `${item.uptimePercentage.toFixed(3)}%`;
-      const showSubscribeButton = Boolean(state.emailAlertingEnabled && item.emailAlertsEnabled);
-      const baseNote = item.error
-        ? `${item.error}${item.statusCode ? ` (${item.statusCode})` : ""}`
-        : item.trackOk
-          ? "Track delivery healthy."
-          : item.apiOk
-            ? "Base API reachable."
-            : "No successful data yet.";
-      let note = baseNote;
-      if (item.state === "degraded") {
-        const degradedParts = [baseNote];
-        if (!item.trackOk) {
-          degradedParts.push("Track: problem.");
-        }
-        degradedParts.push(`Search: ${item.searchOk ? "responding." : "not responding."}`);
-        note = degradedParts.join(" ");
-      }
-      const searchPill = `
-        <span class="probe-pill ${item.searchOk ? "ok" : "bad"}">
-          <span class="probe-pill-dot"></span>
-          <span>Search</span>
-        </span>
-      `;
-      const trackPill = `
-        <span class="probe-pill ${item.trackOk ? "ok" : "bad"}">
-          <span class="probe-pill-dot"></span>
-          <span>Track</span>
-        </span>
-      `;
-      return `
-        <article class="instance">
-          <div class="instance-head">
-            <div class="instance-main">
-              <span class="dot ${escapeHtml(item.state)}"></span>
-              <a class="instance-name" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.url)}</a>
-              <span class="status-chip ${escapeHtml(item.state)}">${escapeHtml(stateLabel(item.state))}</span>
-            </div>
-            <div class="instance-meta">
-              <span class="meta version-pill ${escapeHtml(versionClass)}">${escapeHtml(version)}</span>
-              <span class="uptime">Uptime: ${escapeHtml(uptimeText)}</span>
-              ${showSubscribeButton ? `<button class="ghost-button icon-button tooltip-anchor" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-tooltip="Subscribe by email">&#128276;</button>` : ""}
-            </div>
-          </div>
-          <div class="probe-statuses">${searchPill}${trackPill}</div>
-          <div class="instance-note">${escapeHtml(note)}</div>
-          <div class="timeline" style="--timeline-columns:${Number(state.historyWindowPoints) || 96}">${buildHistoryBars(item.history)}</div>
-          <div class="timeline-labels">
-            <span>Older</span>
-            <span>Newest</span>
-          </div>
-        </article>
-      `;
-    }
-
-    function updateStatusPage(payload) {
-      const summary = payload.summary || {};
-      const instances = Array.isArray(payload.instances) ? payload.instances : [];
-      const historyPoints = payload.historyPoints || 0;
-      const referenceApiVersion = payload.referenceApiVersion && typeof payload.referenceApiVersion === "object"
-        ? payload.referenceApiVersion
-        : {};
-      state.historyWindowPoints = payload.historyWindowPoints || state.historyWindowPoints;
-      state.historyWindowHours = payload.historyWindowHours || state.historyWindowHours;
-      state.checkIntervalSeconds = payload.checkIntervalSeconds || state.checkIntervalSeconds;
-      state.emailAlertingEnabled = Boolean(payload.emailAlertingEnabled);
-      state.referenceApiVersion = normalizeVersionValue(referenceApiVersion.version) || null;
-
-      refs.summaryDot.className = `dot ${summary.state || "unknown"}`;
-      refs.summaryTitle.textContent =
-        summary.state === "operational" ? "All systems operational" :
-        summary.state === "outage" ? "Major outage detected" :
-        "Some systems are degraded";
-      refs.summarySubtitle.textContent =
-        `${summary.streamingCount || 0}/${summary.totalInstances || 0} instances currently serving tracks, ${summary.downCount || 0} degraded.`;
-      refs.lastUpdated.textContent = formatTime(payload.lastUpdated);
-      refs.refreshInterval.textContent = formatIntervalLabel(state.checkIntervalSeconds);
-      refs.referenceApiVersion.textContent = state.referenceApiVersion ? `v${state.referenceApiVersion}` : "n/a";
-      refs.groupSummary.textContent =
-        `${historyPoints} checks over ~${state.historyWindowHours}h · every ${formatIntervalLabel(state.checkIntervalSeconds)}`;
-      refs.footerStats.textContent = `${summary.totalInstances || 0} instances · ${summary.apiCount || 0} API alive · ${summary.streamingCount || 0} streaming`;
-
-      if (instances.length === 0) {
-        refs.statusList.innerHTML = '<div class="empty">No instances configured.</div>';
-        return;
-      }
-
-      refs.statusList.innerHTML = instances.map(renderInstance).join("");
-    }
-
-    function renderManagedInstances(items) {
-      refs.instanceCountLabel.textContent = `${items.length} items`;
-      if (!Array.isArray(items) || items.length === 0) {
-        refs.instanceList.innerHTML = '<div class="empty">No instances configured.</div>';
-        return;
-      }
-
-      function alertLevelsText(item) {
-        const parts = [];
-        if (item.alert_on_outage) parts.push("outage");
-        if (item.alert_on_search) parts.push("search");
-        if (item.alert_on_track) parts.push("track");
-        if (item.alert_on_recovery) parts.push("recovery");
-        return parts.length ? parts.join(", ") : "none";
-      }
-
-      refs.instanceList.innerHTML = items.map((item) => `
-        <article class="managed-item">
-          <div class="managed-copy">
-            <a class="instance-name" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.url)}</a>
-            <div class="managed-meta">Updated ${escapeHtml(formatTime(item.updated_at))}</div>
-            <div class="managed-meta">Discord alerts: ${item.alerts_enabled ? "enabled" : "disabled"}</div>
-            <div class="managed-meta">Email alerts: ${item.email_alerts_enabled ? "enabled" : "disabled"}</div>
-            <div class="managed-meta">Levels: ${escapeHtml(alertLevelsText(item))}</div>
-          </div>
-          <div class="instance-actions">
-            <button class="ghost-button" type="button" data-action="toggle-alerts" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-alerts-enabled="${item.alerts_enabled ? "true" : "false"}">${item.alerts_enabled ? "Disable Discord" : "Enable Discord"}</button>
-            <button class="ghost-button" type="button" data-action="edit" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-alerts-enabled="${item.alerts_enabled ? "true" : "false"}" data-email-alerts-enabled="${item.email_alerts_enabled ? "true" : "false"}" data-alert-on-outage="${item.alert_on_outage ? "true" : "false"}" data-alert-on-search="${item.alert_on_search ? "true" : "false"}" data-alert-on-track="${item.alert_on_track ? "true" : "false"}" data-alert-on-recovery="${item.alert_on_recovery ? "true" : "false"}">Edit</button>
-            <button class="ghost-button" type="button" data-action="delete" data-id="${item.id}" data-url="${escapeHtml(item.url)}">Delete</button>
-          </div>
-        </article>
-      `).join("");
-    }
-
-    function renderSubscriptions(items) {
-      if (!Array.isArray(items) || items.length === 0) {
-        refs.subscriptionsList.innerHTML = '<div class="empty">No subscriptions yet.</div>';
-        return;
-      }
-
-      refs.subscriptionsList.innerHTML = items.map((item) => `
-        <article class="subscription-item">
-          <div class="subscription-copy">
-            <div class="subscription-email">${escapeHtml(item.email)}</div>
-            <a class="instance-name" href="${escapeHtml(item.endpoint_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.endpoint_url)}</a>
-            <div class="managed-meta">Added ${escapeHtml(formatTime(item.created_at))}</div>
-          </div>
-          <div class="instance-actions">
-            <button class="ghost-button" type="button" data-action="delete-subscription" data-id="${item.id}" data-email="${escapeHtml(item.email)}" data-url="${escapeHtml(item.endpoint_url)}">Delete</button>
-          </div>
-        </article>
-      `).join("");
+    function setStatus(el, msg, kind = "") {
+      el.textContent = msg || "";
+      el.className = "status " + kind;
     }
 
     async function fetchJson(url, options = {}) {
-      const response = await fetch(url, {
+      const init = {
         headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-        ...options
-      });
-
+        ...options,
+      };
+      const response = await fetch(url, init);
+      if (response.status === 401) {
+        openAuthModal();
+        throw new Error("Authentication required");
+      }
       if (response.status === 204) return null;
-
       const contentType = response.headers.get("content-type") || "";
       const payload = contentType.includes("application/json") ? await response.json() : null;
-
       if (!response.ok) {
-        const detail = payload && typeof payload.detail === "string" ? payload.detail : `HTTP ${response.status}`;
+        const detail = (payload && typeof payload.detail === "string") ? payload.detail : `HTTP ${response.status}`;
         throw new Error(detail);
       }
-
       return payload;
     }
 
-    async function loadStatusPage() {
-      const payload = await fetchJson(pageEndpoint, { cache: "no-store" });
-      updateStatusPage(payload);
-      return payload;
+    function formatTime(value) {
+      if (!value) return "—";
+      try {
+        const date = new Date(value);
+        return date.toLocaleString();
+      } catch (_) { return value; }
+    }
+    function formatIntervalLabel(seconds) {
+      if (!seconds) return "—";
+      if (seconds % 60 === 0) return `${seconds / 60} min`;
+      return `${seconds} s`;
+    }
+    function formatLatencyText(ms) {
+      if (ms === null || ms === undefined) return "";
+      if (ms >= 1000) return `${(ms / 1000).toFixed(2)} s`;
+      return `${ms} ms`;
+    }
+    function formatLatencyBadge(ms) {
+      const text = formatLatencyText(ms);
+      if (!text) return "";
+      const cls = ms >= 2000 ? "badge bad" : (ms >= 800 ? "badge" : "badge ok");
+      return `<span class="${cls}" title="Response time">${escapeHtml(text)}</span>`;
     }
 
+    function hostnameOf(url) {
+      try { return new URL(url).hostname; } catch (_) { return url; }
+    }
+
+    function loadStatusPage() {
+      return fetchJson("/api/status-page", { cache: "no-store" })
+        .then((payload) => {
+          if (!payload) return;
+          state.checkIntervalSeconds = payload.checkIntervalSeconds || 60;
+          state.groups = payload.groups || [];
+          state.instances = payload.instances || [];
+          renderSummary(payload);
+          renderGroups(payload);
+        })
+        .catch((err) => {
+          if (err.message === "Authentication required") return;
+          refs.summaryDot.className = "summary-dot outage";
+          refs.summaryTitle.textContent = "Dashboard unavailable";
+          refs.summarySub.textContent = err.message;
+        });
+    }
+
+    function renderSummary(payload) {
+      const summary = payload.summary || {};
+      const dotClass = summary.state || "operational";
+      refs.summaryDot.className = `summary-dot ${dotClass}`;
+      const titles = {
+        operational: "All systems operational",
+        degraded: "Some systems degraded",
+        outage: "Major outage detected",
+      };
+      refs.summaryTitle.textContent = titles[summary.state] || "Status";
+      refs.summarySub.textContent = `${summary.totalInstances || 0} monitors · ${(payload.referenceApiVersion || {}).version ? "Reference: " + payload.referenceApiVersion.version : "Reference: —"}`;
+      refs.statApi.textContent = summary.apiCount || 0;
+      refs.statStream.textContent = summary.streamingCount || 0;
+      refs.statDown.textContent = summary.downCount || 0;
+      refs.lastUpdated.textContent = formatTime(payload.lastUpdated);
+      refs.refreshInterval.textContent = formatIntervalLabel(state.checkIntervalSeconds);
+      refs.footerStats.textContent = `${summary.totalInstances || 0} monitors · ${summary.apiCount || 0} api · ${summary.streamingCount || 0} streaming · ${summary.downCount || 0} down`;
+    }
+
+    function renderGroups(payload) {
+      const groupsById = new Map(state.groups.map((g) => [g.id, g]));
+      const buckets = new Map();
+      const orphan = [];
+      for (const inst of state.instances) {
+        if (inst.groupId && groupsById.has(inst.groupId)) {
+          if (!buckets.has(inst.groupId)) buckets.set(inst.groupId, []);
+          buckets.get(inst.groupId).push(inst);
+        } else {
+          orphan.push(inst);
+        }
+      }
+      const sections = [];
+      for (const group of state.groups) {
+        const items = buckets.get(group.id) || [];
+        if (items.length === 0) continue;
+        sections.push(renderGroupSection(group.name, items));
+      }
+      if (orphan.length) sections.push(renderGroupSection("Other", orphan));
+      refs.groupsContainer.innerHTML = sections.join("") || '<div class="empty">No monitors configured. Click <b>Manage</b> to add one.</div>';
+      paintAllCharts();
+    }
+
+    function renderGroupSection(name, instances) {
+      const cards = instances.map(renderInstanceCard).join("");
+      return `
+        <section class="group">
+          <div class="group-head">
+            <div class="group-title">${escapeHtml(name)}</div>
+            <div class="group-count">${instances.length}</div>
+          </div>
+          <div class="instances">${cards}</div>
+        </section>
+      `;
+    }
+
+    const chartPrefKey = "tu.chart.";
+    function isChartEnabled(id) {
+      try { return localStorage.getItem(chartPrefKey + id) !== "0"; } catch (_) { return true; }
+    }
+    function setChartEnabled(id, on) {
+      try { localStorage.setItem(chartPrefKey + id, on ? "1" : "0"); } catch (_) {}
+    }
+
+    function renderLatencyChart(item) {
+      const points = (item.history || []).map((h) => h.responseTimeMs).filter((v) => v !== null && v !== undefined);
+      if (!points.length) {
+        return `<div class="latency-chart" data-chart-for="${item.id}">
+          <div class="axis-label">Response time</div>
+          <div class="empty-msg">No latency data yet</div>
+        </div>`;
+      }
+      const avg = Math.round(points.reduce((a, b) => a + b, 0) / points.length);
+      return `<div class="latency-chart" data-chart-for="${item.id}">
+        <div class="axis-label">Response time · avg</div>
+        <div class="axis-value">${escapeHtml(formatLatencyText(avg))}</div>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" data-chart-svg="${item.id}"></svg>
+        <div class="axis-min" data-chart-min></div>
+        <div class="axis-max" data-chart-max></div>
+        <div class="hover-line" data-chart-line></div>
+        <div class="hover-tip" data-chart-tip></div>
+      </div>`;
+    }
+
+    function paintLatencyChart(container, item) {
+      const svg = container.querySelector("[data-chart-svg]");
+      if (!svg) return;
+      const history = item.history || [];
+      const series = history.map((h) => ({
+        ms: (h.responseTimeMs === null || h.responseTimeMs === undefined) ? null : Number(h.responseTimeMs),
+        state: h.state || "unknown",
+        when: h.lastUpdated || "",
+        error: h.error || null,
+      }));
+      const numericValues = series.filter((p) => p.ms !== null).map((p) => p.ms);
+      if (!numericValues.length) return;
+      const min = Math.min(...numericValues);
+      const max = Math.max(...numericValues);
+      const span = Math.max(1, max - min);
+      const W = 100, H = 100, padTop = 14, padBot = 12, padLR = 2;
+      const usableH = H - padTop - padBot;
+      const xFor = (i) => series.length === 1 ? W / 2 : padLR + (i / (series.length - 1)) * (W - padLR * 2);
+      const yFor = (v) => padTop + (1 - (v - min) / span) * usableH;
+
+      const lastPoint = series[series.length - 1];
+      const lineColor = lastPoint && lastPoint.ms !== null && lastPoint.ms >= 2000
+        ? "#ff6b6b" : (lastPoint && lastPoint.ms !== null && lastPoint.ms >= 800 ? "#e3b341" : "#36c26d");
+
+      const linePoints = [];
+      const areaPoints = [];
+      let started = false;
+      let firstX = 0;
+      let lastX = 0;
+      series.forEach((p, i) => {
+        if (p.ms === null) return;
+        const x = xFor(i);
+        const y = yFor(p.ms);
+        if (!started) { firstX = x; started = true; }
+        lastX = x;
+        linePoints.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+        areaPoints.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+      });
+      if (!linePoints.length) return;
+      const areaPath = `M ${firstX.toFixed(2)},${(H - padBot).toFixed(2)} L ${areaPoints.join(" L ")} L ${lastX.toFixed(2)},${(H - padBot).toFixed(2)} Z`;
+
+      const gradId = `lc-${item.id}`;
+      const dots = series.map((p, i) => {
+        if (p.ms === null) return "";
+        const x = xFor(i).toFixed(2);
+        const y = yFor(p.ms).toFixed(2);
+        const fill = p.state === "outage" ? "#ff6b6b" : (p.state === "degraded" ? "#e3b341" : lineColor);
+        const isLast = i === series.length - 1;
+        const r = isLast ? 1.6 : 0;
+        return `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" />`;
+      }).join("");
+
+      svg.innerHTML = `
+        <defs>
+          <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="${areaPath}" fill="url(#${gradId})" />
+        <polyline points="${linePoints.join(" ")}" fill="none" stroke="${lineColor}" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        ${dots}
+      `;
+
+      const minLabel = container.querySelector("[data-chart-min]");
+      const maxLabel = container.querySelector("[data-chart-max]");
+      if (minLabel) minLabel.textContent = `min ${formatLatencyText(min)}`;
+      if (maxLabel) maxLabel.textContent = `max ${formatLatencyText(max)}`;
+
+      const hoverLine = container.querySelector("[data-chart-line]");
+      const hoverTip = container.querySelector("[data-chart-tip]");
+      const indices = series.map((p, i) => p.ms !== null ? i : -1).filter((i) => i >= 0);
+      const onMove = (event) => {
+        const rect = svg.getBoundingClientRect();
+        if (!rect.width) return;
+        const ratio = (event.clientX - rect.left) / rect.width;
+        if (ratio < 0 || ratio > 1) return;
+        let nearestIdx = indices[0];
+        let nearestDist = Infinity;
+        for (const i of indices) {
+          const x = xFor(i) / 100;
+          const d = Math.abs(x - ratio);
+          if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+        }
+        const p = series[nearestIdx];
+        const xPct = xFor(nearestIdx);
+        hoverLine.style.left = `${xPct}%`;
+        hoverLine.style.display = "block";
+        hoverTip.style.left = `${xPct}%`;
+        hoverTip.style.top = `${yFor(p.ms)}%`;
+        hoverTip.style.display = "block";
+        const dt = p.when ? new Date(p.when).toLocaleTimeString() : "";
+        hoverTip.textContent = `${formatLatencyText(p.ms)}${dt ? " · " + dt : ""}`;
+      };
+      const onLeave = () => {
+        hoverLine.style.display = "none";
+        hoverTip.style.display = "none";
+      };
+      svg.addEventListener("mousemove", onMove);
+      svg.addEventListener("mouseleave", onLeave);
+    }
+
+    const chartIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12L5.5 7.5L8.5 10L13.5 4"/><circle cx="13.5" cy="4" r="1.1" fill="currentColor" stroke="none"/></svg>';
+
+    function renderInstanceCard(item) {
+      const stateClass = item.state || "unknown";
+      const labelName = item.name || hostnameOf(item.url);
+      const versionTag = item.version ? `<span class="badge ok">v${escapeHtml(item.version)}</span>` : "";
+      const uptimeTag = item.uptimePercentage !== null && item.uptimePercentage !== undefined
+        ? `<span class="badge">${item.uptimePercentage.toFixed(2)}%</span>` : "";
+      const latencyTag = formatLatencyBadge(item.responseTimeMs);
+      const subchecks = (item.subchecks || []).map((s) => {
+        const sCls = s.ok === true ? "operational" : (s.ok === false ? "outage" : "");
+        const latencyText = formatLatencyText(s.responseTimeMs);
+        const tip = [s.label, latencyText, s.error, s.url].filter(Boolean).join(" · ");
+        const trailing = latencyText ? ` <span style="color:var(--muted);">${escapeHtml(latencyText)}</span>` : "";
+        const failCls = s.ok === false ? " fail" : "";
+        if (s.url) {
+          return `<a class="subcheck-pill link${failCls}" href="${escapeHtml(s.url)}" target="_blank" rel="noreferrer" title="${escapeHtml(tip)}"><span class="dot ${sCls}"></span>${escapeHtml(s.label)}${trailing}</a>`;
+        }
+        return `<span class="subcheck-pill${failCls}" title="${escapeHtml(tip)}"><span class="dot ${sCls}"></span>${escapeHtml(s.label)}${trailing}</span>`;
+      }).join("");
+      let issueLine = "";
+      if ((item.state === "outage" || item.state === "degraded") && item.error) {
+        const failedSub = (item.subchecks || []).find((s) => s.ok === false);
+        if (failedSub && failedSub.url) {
+          const tip = [failedSub.label, failedSub.error, failedSub.url].filter(Boolean).join(" · ");
+          issueLine = `<div class="instance-meta"><a class="badge bad link" href="${escapeHtml(failedSub.url)}" target="_blank" rel="noreferrer" title="Open sub-check: ${escapeHtml(tip)}">${escapeHtml(item.error)}</a></div>`;
+        } else {
+          issueLine = `<div class="instance-meta"><span class="badge bad">${escapeHtml(item.error)}</span></div>`;
+        }
+      }
+      const history = (item.history || []).slice(-60).map((h) => {
+        const c = h.state && h.state !== "unknown" ? h.state : "";
+        const latencyText = formatLatencyText(h.responseTimeMs);
+        const tip = [h.lastUpdated || "", latencyText, h.error].filter(Boolean).join(" · ");
+        return `<span class="history-bar ${c}" title="${escapeHtml(tip)}"></span>`;
+      }).join("");
+      const chartOn = isChartEnabled(item.id);
+      const metricsBlock = renderMetricsBlock(item);
+      return `
+        <article class="instance">
+          <div class="instance-head">
+            <span class="dot ${stateClass}"></span>
+            <a class="instance-name" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(labelName)}</a>
+            ${versionTag}
+            <span class="instance-head-actions">
+              <button class="icon-toggle ${chartOn ? "active" : ""}" type="button" data-action="toggle-chart" data-id="${item.id}" title="${chartOn ? "Hide response time graph" : "Show response time graph"}" aria-label="Toggle response time graph">${chartIcon}</button>
+            </span>
+          </div>
+          ${subchecks ? `<div class="subchecks">${subchecks}</div>` : ""}
+          ${issueLine}
+          <div class="history">${history}</div>
+          ${chartOn ? renderLatencyChart(item) : ""}
+          ${metricsBlock}
+          <div class="instance-meta">
+            ${uptimeTag}
+            ${latencyTag}
+            <span class="badge">${escapeHtml(item.kind || "tidal")}</span>
+          </div>
+          <div class="instance-actions">
+            <button class="ghost-button" type="button" data-action="edit" data-id="${item.id}">Edit</button>
+            <button class="ghost-button" type="button" data-action="subscribe" data-id="${item.id}" data-url="${escapeHtml(item.url)}">Email alerts</button>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderMetricsBlock(item) {
+      const m = item.metrics;
+      if (!m || !m.url) return "";
+      const headerText = m.fetchedAt ? `Info · updated ${formatTime(m.fetchedAt)}` : "Info";
+      let body = "";
+      if (m.error) {
+        body = `<div class="metrics-error">${escapeHtml(m.error)}</div>`;
+      } else if (m.parseError) {
+        body = `<div class="metrics-error">${escapeHtml(m.parseError)}</div>`;
+      } else if (m.values && m.values.length) {
+        body = `<div class="metrics-rows">${m.values.map((v) => {
+          const valueText = v.found ? v.value : "—";
+          const cls = v.found ? "metrics-val" : "metrics-val muted";
+          return `<div class="metrics-row"><span class="metrics-label" title="${escapeHtml(v.path)}">${escapeHtml(v.label)}</span><span class="${cls}" title="${escapeHtml(v.value || "")}">${escapeHtml(valueText)}</span></div>`;
+        }).join("")}</div>`;
+      } else if (m.hasPayload) {
+        body = `<div class="metrics-row" style="color:var(--muted); font-size:12px;">No keys configured. Click to view JSON.</div>`;
+      } else {
+        body = `<div class="metrics-row" style="color:var(--muted); font-size:12px;">Awaiting first fetch…</div>`;
+      }
+      return `<button class="metrics-block" type="button" data-action="metrics" data-id="${item.id}" title="View raw JSON">
+        <div class="metrics-head"><span>${escapeHtml(headerText)}</span><span class="metrics-link">view JSON ↗</span></div>
+        ${body}
+      </button>`;
+    }
+
+    function paintAllCharts() {
+      const instancesById = new Map(state.instances.map((i) => [i.id, i]));
+      document.querySelectorAll(".latency-chart[data-chart-for]").forEach((node) => {
+        const id = Number(node.dataset.chartFor);
+        const item = instancesById.get(id);
+        if (item) paintLatencyChart(node, item);
+      });
+    }
+
+    refs.groupsContainer.addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-action]");
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      const action = btn.dataset.action;
+      if (action === "edit") {
+        openInstanceForm(id);
+      } else if (action === "subscribe") {
+        openSubscribe(id, btn.dataset.url);
+      } else if (action === "metrics") {
+        openMetricsModal(id);
+      } else if (action === "toggle-chart") {
+        const wasOn = isChartEnabled(id);
+        setChartEnabled(id, !wasOn);
+        const card = btn.closest(".instance");
+        const item = state.instances.find((x) => x.id === id);
+        if (!card || !item) { renderGroups({}); return; }
+        const existing = card.querySelector(".latency-chart");
+        if (wasOn) {
+          if (existing) existing.remove();
+          btn.classList.remove("active");
+          btn.title = "Show response time graph";
+        } else {
+          const historyEl = card.querySelector(".history");
+          const tmp = document.createElement("div");
+          tmp.innerHTML = renderLatencyChart(item);
+          const node = tmp.firstElementChild;
+          if (historyEl && node) {
+            historyEl.insertAdjacentElement("afterend", node);
+            paintLatencyChart(node, item);
+          }
+          btn.classList.add("active");
+          btn.title = "Hide response time graph";
+        }
+      }
+    });
+
+    // ---------- Manager modal ----------
+    function openManage() {
+      refs.manageModal.classList.add("open");
+      switchTab("instances");
+      loadInstances();
+      loadGroups();
+    }
+    function closeManage() { refs.manageModal.classList.remove("open"); }
+    refs.manageBtn.addEventListener("click", openManage);
+    refs.closeManage.addEventListener("click", closeManage);
+    refs.manageModal.addEventListener("click", (e) => { if (e.target === refs.manageModal) closeManage(); });
+
+    function switchTab(name) {
+      document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+      document.querySelectorAll("section[data-pane]").forEach((p) => { p.hidden = p.dataset.pane !== name; });
+      if (name === "subscriptions") loadSubscriptions();
+    }
+    document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+
+    refs.refreshBtn.addEventListener("click", async () => {
+      refs.refreshBtn.disabled = true;
+      try {
+        await fetchJson("/api/refresh", { method: "POST" });
+        showToast("Refresh started", "Snapshot will update shortly.", "success");
+        setTimeout(loadStatusPage, 1500);
+      } catch (err) {
+        if (err.message !== "Authentication required") showToast("Refresh failed", err.message, "error");
+      } finally { refs.refreshBtn.disabled = false; }
+    });
+
+    refs.logoutBtn.addEventListener("click", async () => {
+      try {
+        await fetchJson("/api/auth/logout", { method: "POST" });
+      } catch (_) {}
+      window.location.replace("/");
+    });
+
+    // ---------- Instances ----------
     async function loadInstances() {
-      const payload = await fetchJson(instancesEndpoint, { cache: "no-store" });
-      renderManagedInstances(payload.items || []);
-    }
-
-    async function loadSubscriptions() {
-      const payload = await fetchJson(subscriptionsEndpoint, { cache: "no-store" });
-      renderSubscriptions(payload.items || []);
-    }
-
-    async function reloadAll() {
       try {
-        return await loadStatusPage();
-      } catch (error) {
-        refs.summaryDot.className = "dot outage";
-        refs.summaryTitle.textContent = "Dashboard unavailable";
-        refs.summarySubtitle.textContent = error.message;
-        return null;
+        const payload = await fetchJson("/api/instances", { cache: "no-store" });
+        renderInstanceList(payload.items || []);
+      } catch (err) {
+        if (err.message !== "Authentication required") refs.instanceList.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
       }
     }
-
-    async function refreshAuthStatus() {
-      try {
-        const payload = await fetchJson(authStatusEndpoint, { cache: "no-store" });
-        state.authenticated = Boolean(payload.authenticated);
-      } catch {
-        state.authenticated = false;
-      }
-      if (!state.authenticated && refs.subscriptionsModal.classList.contains("open")) {
-        closeSubscriptionsModal();
-      }
-      updateManageButton();
+    function renderInstanceList(items) {
+      if (!items.length) { refs.instanceList.innerHTML = '<div class="empty">No monitors yet.</div>'; return; }
+      refs.instanceList.innerHTML = items.map((item) => {
+        const groupName = (state.groups.find((g) => g.id === item.group_id) || {}).name || "—";
+        const subCount = (item.subchecks || []).length;
+        return `
+          <div class="group-row">
+            <div>
+              <div style="font-weight:700;">${escapeHtml(item.name || hostnameOf(item.url))}</div>
+              <div style="color:var(--muted); font-size:12px;">${escapeHtml(item.url)} · ${escapeHtml(item.kind)} · ${escapeHtml(groupName)} · ${subCount} sub-check${subCount === 1 ? "" : "s"}</div>
+            </div>
+            <div class="group-row-actions">
+              <button class="ghost-button" type="button" data-edit="${item.id}">Edit</button>
+              <button class="ghost-button danger" type="button" data-delete="${item.id}">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join("");
     }
-
-    async function openManagerIfAuthenticated() {
-      await refreshAuthStatus();
-      if (!state.authenticated) {
-        openAuthModal();
-        return;
+    refs.instanceList.addEventListener("click", async (event) => {
+      const editId = event.target.dataset?.edit;
+      const deleteId = event.target.dataset?.delete;
+      if (editId) openInstanceForm(Number(editId));
+      else if (deleteId) {
+        if (!confirm("Delete this monitor?")) return;
+        try {
+          await fetchJson(`/api/instances/${deleteId}`, { method: "DELETE" });
+          showToast("Deleted", "Monitor removed.", "success");
+          await loadInstances();
+          await loadStatusPage();
+        } catch (err) {
+          if (err.message !== "Authentication required") showToast("Delete failed", err.message, "error");
+        }
       }
+    });
 
-      openModal();
+    refs.addInstanceBtn.addEventListener("click", () => openInstanceForm(null));
+
+    document.getElementById("disable-all-alerts").addEventListener("click", async () => {
+      if (!confirm("Disable email alerts and all alert levels on every monitor?")) return;
       try {
+        await fetchJson("/api/instances/settings", {
+          method: "PATCH",
+          body: JSON.stringify({
+            emailAlertsEnabled: false,
+            alertOnOutage: false,
+            alertOnSearch: false,
+            alertOnTrack: false,
+            alertOnRecovery: false,
+          }),
+        });
+        showToast("Disabled", "Alerts turned off for all monitors.", "success");
         await loadInstances();
-      } catch (error) {
-        if (error.message === "Authentication required") {
-          state.authenticated = false;
-          updateManageButton();
-          closeModal();
-          openAuthModal();
-          return;
-        }
-        setManagerStatus(error.message, "error");
+      } catch (err) {
+        if (err.message !== "Authentication required") showToast("Failed", err.message, "error");
       }
+    });
+
+    async function openInstanceForm(id) {
+      state.editingId = id;
+      state.subchecks = [];
+      refs.instanceFormTitle.textContent = id ? "Edit monitor" : "Add monitor";
+      refs.instanceDelete.hidden = !id;
+      setStatus(refs.instanceStatus, "");
+      refs.instanceForm.reset();
+      refs.emailAlerts.checked = false;
+      refs.alertRecovery.checked = false;
+      refs.alertOutage.checked = false;
+      refs.alertSearch.checked = false;
+      refs.alertTrack.checked = false;
+      refs.instMethod.value = "GET";
+      refs.instMatchType.value = "";
+      refs.kindRadios.forEach((r) => { r.checked = r.value === "tidal"; });
+      await refreshGroupsDropdown();
+
+      if (id) {
+        try {
+          const payload = await fetchJson("/api/instances", { cache: "no-store" });
+          const item = (payload.items || []).find((x) => x.id === id);
+          if (item) populateInstanceForm(item);
+        } catch (err) {
+          if (err.message !== "Authentication required") setStatus(refs.instanceStatus, err.message, "error");
+        }
+      }
+      updateKindVisibility();
+      renderSubchecks();
+      refs.instanceModal.classList.add("open");
     }
 
-    async function openSubscriptionsIfAuthenticated() {
-      await refreshAuthStatus();
-      if (!state.authenticated) {
-        openAuthModal();
+    function populateInstanceForm(item) {
+      refs.instUrl.value = item.url || "";
+      refs.instName.value = item.name || "";
+      refs.kindRadios.forEach((r) => { r.checked = r.value === item.kind; });
+      refs.instGroup.value = item.group_id || "";
+      refs.instMethod.value = item.request_method || "GET";
+      refs.instExpectedStatus.value = item.expected_status ?? "";
+      refs.instMatchType.value = item.match_type || "";
+      refs.instMatchPath.value = item.match_path || "";
+      refs.instMatchValue.value = item.match_value || "";
+      refs.instMetricsUrl.value = item.metrics_url || "";
+      refs.instMetricsKeys.value = item.metrics_keys || "";
+      refs.emailAlerts.checked = !!item.email_alerts_enabled;
+      refs.alertOutage.checked = !!item.alert_on_outage;
+      refs.alertSearch.checked = !!item.alert_on_search;
+      refs.alertTrack.checked = !!item.alert_on_track;
+      refs.alertRecovery.checked = !!item.alert_on_recovery;
+      state.subchecks = (item.subchecks || []).map((s) => ({ ...s }));
+    }
+
+    refs.kindRadios.forEach((r) => r.addEventListener("change", updateKindVisibility));
+    function updateKindVisibility() {
+      const kind = Array.from(refs.kindRadios).find((r) => r.checked)?.value || "tidal";
+      refs.httpFields.hidden = kind !== "http";
+    }
+
+    function renderSubchecks() {
+      if (!state.subchecks.length) {
+        refs.subchecksList.innerHTML = '<div class="empty" style="padding:6px 0;">No sub-checks defined.</div>';
         return;
       }
-
-      openSubscriptionsModal();
-      try {
-        await loadSubscriptions();
-      } catch (error) {
-        if (error.message === "Authentication required") {
-          state.authenticated = false;
-          updateManageButton();
-          closeSubscriptionsModal();
-          openAuthModal();
-          return;
-        }
-        setSubscriptionsStatus(error.message, "error");
-      }
+      refs.subchecksList.innerHTML = state.subchecks.map((s, idx) => `
+        <div class="subcheck-card" data-idx="${idx}">
+          <div class="subcheck-card-head">
+            <strong>Sub-check #${idx + 1}</strong>
+            <button class="ghost-button danger" type="button" data-remove="${idx}">Remove</button>
+          </div>
+          <div class="row cols-2">
+            <div class="field">
+              <label>Label</label>
+              <input type="text" data-field="label" value="${escapeHtml(s.label || "")}" placeholder="e.g. health">
+            </div>
+            <div class="field">
+              <label>URL</label>
+              <input type="url" data-field="url" value="${escapeHtml(s.url || "")}" placeholder="https://...">
+            </div>
+          </div>
+          <div class="row cols-3-1">
+            <div class="field">
+              <label>Method</label>
+              <select data-field="request_method">
+                ${["GET","POST","HEAD","PUT","PATCH","DELETE"].map((m) => `<option ${(s.request_method||"GET")===m?"selected":""}>${m}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field">
+              <label>Expected status</label>
+              <input type="number" data-field="expected_status" value="${s.expected_status ?? ""}" placeholder="any 2xx/3xx">
+            </div>
+            <div class="field">
+              <label>Response match</label>
+              <select data-field="match_type">
+                ${[["","None"],["status","Status only"],["json_key","JSON key exists"],["json_equals","JSON key equals"],["contains","Body contains"]].map(([v,l]) => `<option value="${v}" ${((s.match_type||"")===v)?"selected":""}>${l}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <div class="row cols-2">
+            <div class="field">
+              <label>JSON path</label>
+              <input type="text" data-field="match_path" value="${escapeHtml(s.match_path || "")}">
+            </div>
+            <div class="field">
+              <label>Expected value / substring</label>
+              <input type="text" data-field="match_value" value="${escapeHtml(s.match_value || "")}">
+            </div>
+          </div>
+        </div>
+      `).join("");
     }
 
-    refs.manageButton.addEventListener("click", async () => {
-      await openManagerIfAuthenticated();
-    });
-
-    refs.subscriptionsButton.addEventListener("click", async () => {
-      await openSubscriptionsIfAuthenticated();
-    });
-
-    refs.closeModal.addEventListener("click", closeModal);
-    refs.modal.addEventListener("click", (event) => {
-      if (event.target === refs.modal) {
-        closeModal();
-      }
-    });
-    refs.closeAuthModal.addEventListener("click", closeAuthModal);
-    refs.authModal.addEventListener("click", (event) => {
-      if (event.target === refs.authModal) {
-        closeAuthModal();
-      }
-    });
-    refs.closeSubscribeModal.addEventListener("click", closeSubscribeModal);
-    refs.subscribeModal.addEventListener("click", (event) => {
-      if (event.target === refs.subscribeModal) {
-        closeSubscribeModal();
-      }
-    });
-    refs.closeSubscriptionsModal.addEventListener("click", closeSubscriptionsModal);
-    refs.subscriptionsModal.addEventListener("click", (event) => {
-      if (event.target === refs.subscriptionsModal) {
-        closeSubscriptionsModal();
+    refs.subchecksList.addEventListener("click", (event) => {
+      const removeIdx = event.target.dataset?.remove;
+      if (removeIdx !== undefined) {
+        state.subchecks.splice(Number(removeIdx), 1);
+        renderSubchecks();
       }
     });
 
-    window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && refs.modal.classList.contains("open")) {
-        closeModal();
-      }
-      if (event.key === "Escape" && refs.authModal.classList.contains("open")) {
-        closeAuthModal();
-      }
-      if (event.key === "Escape" && refs.subscribeModal.classList.contains("open")) {
-        closeSubscribeModal();
-      }
-      if (event.key === "Escape" && refs.subscriptionsModal.classList.contains("open")) {
-        closeSubscriptionsModal();
+    refs.subchecksList.addEventListener("input", (event) => {
+      const card = event.target.closest("[data-idx]");
+      if (!card) return;
+      const idx = Number(card.dataset.idx);
+      const field = event.target.dataset.field;
+      if (!field) return;
+      const value = event.target.value;
+      state.subchecks[idx] = { ...(state.subchecks[idx] || {}), [field]: value };
+    });
+
+    refs.addSubcheck.addEventListener("click", () => {
+      state.subchecks.push({ label: "", url: "", request_method: "GET", expected_status: "", match_type: "", match_path: "", match_value: "" });
+      renderSubchecks();
+    });
+
+    refs.closeInstance.addEventListener("click", () => refs.instanceModal.classList.remove("open"));
+    refs.instanceModal.addEventListener("click", (e) => { if (e.target === refs.instanceModal) refs.instanceModal.classList.remove("open"); });
+
+    refs.instanceForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const kind = Array.from(refs.kindRadios).find((r) => r.checked)?.value || "tidal";
+      const groupVal = refs.instGroup.value;
+      const payload = {
+        url: refs.instUrl.value.trim(),
+        name: refs.instName.value.trim() || null,
+        kind,
+        groupId: groupVal ? Number(groupVal) : null,
+        requestMethod: refs.instMethod.value,
+        expectedStatus: refs.instExpectedStatus.value !== "" ? Number(refs.instExpectedStatus.value) : null,
+        matchType: refs.instMatchType.value || null,
+        matchPath: refs.instMatchPath.value || null,
+        matchValue: refs.instMatchValue.value || null,
+        metricsUrl: (refs.instMetricsUrl.value || "").trim() || null,
+        metricsKeys: (refs.instMetricsKeys.value || "").trim() || null,
+        emailAlertsEnabled: refs.emailAlerts.checked,
+        alertOnOutage: refs.alertOutage.checked,
+        alertOnSearch: refs.alertSearch.checked,
+        alertOnTrack: refs.alertTrack.checked,
+        alertOnRecovery: refs.alertRecovery.checked,
+        subchecks: state.subchecks
+          .filter((s) => (s.url || "").trim())
+          .map((s, idx) => ({
+            label: s.label || "",
+            url: (s.url || "").trim(),
+            requestMethod: s.request_method || "GET",
+            expectedStatus: s.expected_status !== "" && s.expected_status !== null && s.expected_status !== undefined ? Number(s.expected_status) : null,
+            matchType: s.match_type || null,
+            matchPath: s.match_path || null,
+            matchValue: s.match_value || null,
+            sortOrder: idx,
+          })),
+      };
+      refs.instanceSubmit.disabled = true;
+      setStatus(refs.instanceStatus, state.editingId ? "Saving…" : "Adding…");
+      try {
+        const url = state.editingId ? `/api/instances/${state.editingId}` : "/api/instances";
+        const method = state.editingId ? "PUT" : "POST";
+        await fetchJson(url, { method, body: JSON.stringify(payload) });
+        showToast(state.editingId ? "Saved" : "Created", "Monitor updated.", "success");
+        refs.instanceModal.classList.remove("open");
+        await loadInstances();
+        await loadStatusPage();
+      } catch (err) {
+        if (err.message !== "Authentication required") setStatus(refs.instanceStatus, err.message, "error");
+      } finally { refs.instanceSubmit.disabled = false; }
+    });
+
+    refs.instanceDelete.addEventListener("click", async () => {
+      if (!state.editingId) return;
+      if (!confirm("Delete this monitor?")) return;
+      try {
+        await fetchJson(`/api/instances/${state.editingId}`, { method: "DELETE" });
+        showToast("Deleted", "Monitor removed.", "success");
+        refs.instanceModal.classList.remove("open");
+        await loadInstances();
+        await loadStatusPage();
+      } catch (err) {
+        if (err.message !== "Authentication required") setStatus(refs.instanceStatus, err.message, "error");
       }
     });
 
+    // ---------- Groups ----------
+    async function loadGroups() {
+      try {
+        const payload = await fetchJson("/api/groups", { cache: "no-store" });
+        state.groups = payload.items || [];
+        renderGroupList();
+        await refreshGroupsDropdown();
+      } catch (err) {
+        if (err.message !== "Authentication required") refs.groupList.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      }
+    }
+    function renderGroupList() {
+      if (!state.groups.length) { refs.groupList.innerHTML = '<div class="empty">No groups.</div>'; return; }
+      refs.groupList.innerHTML = state.groups.map((g) => `
+        <div class="group-row">
+          <div>
+            <div style="font-weight:700;">${escapeHtml(g.name)}</div>
+            <div style="color:var(--muted); font-size:12px;">sort ${g.sort_order}</div>
+          </div>
+          <div class="group-row-actions">
+            <button class="ghost-button" type="button" data-edit-group="${g.id}">Edit</button>
+            <button class="ghost-button danger" type="button" data-delete-group="${g.id}">Delete</button>
+          </div>
+        </div>
+      `).join("");
+    }
+    refs.groupList.addEventListener("click", async (event) => {
+      const editId = event.target.dataset?.editGroup;
+      const deleteId = event.target.dataset?.deleteGroup;
+      if (editId) {
+        const g = state.groups.find((x) => x.id === Number(editId));
+        if (!g) return;
+        state.groupEditingId = g.id;
+        refs.groupName.value = g.name;
+        refs.groupSort.value = g.sort_order;
+        refs.groupSubmit.textContent = "Save group";
+        refs.groupCancel.hidden = false;
+      } else if (deleteId) {
+        if (!confirm("Delete this group? Monitors will be moved to 'Other'.")) return;
+        try {
+          await fetchJson(`/api/groups/${deleteId}`, { method: "DELETE" });
+          showToast("Deleted", "Group removed.", "success");
+          await loadGroups();
+          await loadStatusPage();
+        } catch (err) {
+          if (err.message !== "Authentication required") showToast("Delete failed", err.message, "error");
+        }
+      }
+    });
+    refs.groupCancel.addEventListener("click", () => {
+      state.groupEditingId = null;
+      refs.groupForm.reset();
+      refs.groupSort.value = 0;
+      refs.groupSubmit.textContent = "Add group";
+      refs.groupCancel.hidden = true;
+      setStatus(refs.groupStatus, "");
+    });
+    refs.groupForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = refs.groupName.value.trim();
+      const sort = Number(refs.groupSort.value || 0);
+      if (!name) return;
+      refs.groupSubmit.disabled = true;
+      try {
+        if (state.groupEditingId) {
+          await fetchJson(`/api/groups/${state.groupEditingId}`, { method: "PUT", body: JSON.stringify({ name, sortOrder: sort }) });
+          showToast("Saved", "Group updated.", "success");
+        } else {
+          await fetchJson("/api/groups", { method: "POST", body: JSON.stringify({ name, sortOrder: sort }) });
+          showToast("Created", "Group added.", "success");
+        }
+        state.groupEditingId = null;
+        refs.groupForm.reset();
+        refs.groupSort.value = 0;
+        refs.groupSubmit.textContent = "Add group";
+        refs.groupCancel.hidden = true;
+        setStatus(refs.groupStatus, "");
+        await loadGroups();
+        await loadStatusPage();
+      } catch (err) {
+        if (err.message !== "Authentication required") setStatus(refs.groupStatus, err.message, "error");
+      } finally { refs.groupSubmit.disabled = false; }
+    });
+
+    async function refreshGroupsDropdown() {
+      if (!state.groups.length) {
+        try {
+          const payload = await fetchJson("/api/groups", { cache: "no-store" });
+          state.groups = payload.items || [];
+        } catch (_) {}
+      }
+      const options = ['<option value="">— None —</option>']
+        .concat(state.groups.map((g) => `<option value="${g.id}">${escapeHtml(g.name)}</option>`));
+      refs.instGroup.innerHTML = options.join("");
+    }
+
+    // ---------- Subscriptions ----------
+    async function loadSubscriptions() {
+      try {
+        const payload = await fetchJson("/api/subscriptions", { cache: "no-store" });
+        renderSubscriptions(payload.items || []);
+      } catch (err) {
+        if (err.message !== "Authentication required") refs.subscriptionsList.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      }
+    }
+    function renderSubscriptions(items) {
+      if (!items.length) { refs.subscriptionsList.innerHTML = '<div class="empty">No subscriptions.</div>'; return; }
+      refs.subscriptionsList.innerHTML = items.map((s) => `
+        <div class="group-row">
+          <div>
+            <div style="font-weight:700;">${escapeHtml(s.email)}</div>
+            <div style="color:var(--muted); font-size:12px;">${escapeHtml(s.endpoint_url)}</div>
+          </div>
+          <div class="group-row-actions">
+            <button class="ghost-button danger" type="button" data-delete-sub="${s.id}">Delete</button>
+          </div>
+        </div>
+      `).join("");
+    }
+    refs.subscriptionsList.addEventListener("click", async (event) => {
+      const id = event.target.dataset?.deleteSub;
+      if (!id) return;
+      if (!confirm("Delete this subscription?")) return;
+      try {
+        await fetchJson(`/api/subscriptions/${id}`, { method: "DELETE" });
+        await loadSubscriptions();
+      } catch (err) {
+        if (err.message !== "Authentication required") showToast("Delete failed", err.message, "error");
+      }
+    });
+
+    function openSubscribe(endpointId, url) {
+      state.subscribeFor = endpointId;
+      refs.subscribeTarget.textContent = url;
+      refs.subscribeEmail.value = "";
+      setStatus(refs.subscribeStatus, "");
+      refs.subscribeModal.classList.add("open");
+    }
+    refs.closeSubscribe.addEventListener("click", () => refs.subscribeModal.classList.remove("open"));
+    refs.subscribeModal.addEventListener("click", (e) => { if (e.target === refs.subscribeModal) refs.subscribeModal.classList.remove("open"); });
+    refs.subscribeForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = refs.subscribeEmail.value.trim();
+      if (!email || !state.subscribeFor) return;
+      try {
+        await fetchJson(`/api/instances/${state.subscribeFor}/subscriptions`, {
+          method: "POST", body: JSON.stringify({ email }),
+        });
+        showToast("Subscribed", "Email added.", "success");
+        refs.subscribeModal.classList.remove("open");
+      } catch (err) {
+        if (err.message !== "Authentication required") setStatus(refs.subscribeStatus, err.message, "error");
+      }
+    });
+
+    // ---------- Metrics modal ----------
+    async function openMetricsModal(endpointId) {
+      const item = state.instances.find((x) => x.id === endpointId);
+      const labelName = item ? (item.name || hostnameOf(item.url)) : `monitor #${endpointId}`;
+      const metricsUrl = item && item.metrics ? item.metrics.url : "";
+      refs.metricsTarget.textContent = metricsUrl ? `${labelName} · ${metricsUrl}` : labelName;
+      refs.metricsMeta.textContent = "";
+      refs.metricsJson.textContent = "Loading…";
+      refs.metricsModal.classList.add("open");
+      try {
+        const data = await fetchJson(`/api/instances/${endpointId}/metrics`, { cache: "no-store" });
+        const meta = [];
+        if (data.fetchedAt) meta.push(`fetched ${formatTime(data.fetchedAt)}`);
+        if (data.statusCode !== null && data.statusCode !== undefined) meta.push(`HTTP ${data.statusCode}`);
+        if (data.responseTimeMs !== null && data.responseTimeMs !== undefined) meta.push(formatLatencyText(data.responseTimeMs));
+        if (data.ok === false && data.error) meta.push(`error: ${data.error}`);
+        refs.metricsMeta.textContent = meta.join(" · ");
+        if (!data.payloadJson) {
+          refs.metricsJson.textContent = data.error || "No info fetched yet.";
+          return;
+        }
+        let pretty = data.payloadJson;
+        try { pretty = JSON.stringify(JSON.parse(data.payloadJson), null, 2); } catch (_) {}
+        refs.metricsJson.textContent = pretty;
+      } catch (err) {
+        if (err.message !== "Authentication required") {
+          refs.metricsJson.textContent = `Failed to load: ${err.message}`;
+        }
+      }
+    }
+    refs.closeMetrics.addEventListener("click", () => refs.metricsModal.classList.remove("open"));
+    refs.metricsModal.addEventListener("click", (e) => { if (e.target === refs.metricsModal) refs.metricsModal.classList.remove("open"); });
+
+    // ---------- Auth modal (re-login) ----------
+    function openAuthModal() { refs.authModal.classList.add("open"); refs.authPassword.focus(); }
     refs.authForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const password = refs.authPassword.value;
       if (!password) return;
-
-      refs.authSubmit.disabled = true;
-      setAuthStatus("Checking password...");
+      setStatus(refs.authStatus, "Checking…");
       try {
-        await fetchJson(authLoginEndpoint, {
+        const response = await fetch("/api/auth/login", {
           method: "POST",
-          body: JSON.stringify({ password })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
         });
-        state.authenticated = true;
-        updateManageButton();
-        closeAuthModal();
-        showToast("You are now signed in.", "success", "Login");
-        await openManagerIfAuthenticated();
-      } catch (error) {
-        setAuthStatus(error.message, "error");
-        showToast(error.message, "error", "Login failed");
-      } finally {
-        refs.authSubmit.disabled = false;
-      }
-    });
-
-    refs.subscribeForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const email = refs.subscribeEmail.value.trim();
-      if (!email || !state.subscribeEndpointId) return;
-
-      refs.subscribeSubmit.disabled = true;
-      setSubscribeStatus("Saving subscription...");
-      try {
-        await fetchJson(`${instancesEndpoint}/${state.subscribeEndpointId}/subscriptions`, {
-          method: "POST",
-          body: JSON.stringify({ email })
-        });
-        setSubscribeStatus("Subscription created.", "success");
-        showToast("Email subscription created.", "success", "Subscribed");
-        closeSubscribeModal();
-        if (state.authenticated && refs.subscriptionsModal.classList.contains("open")) {
-          await loadSubscriptions();
-        }
-      } catch (error) {
-        setSubscribeStatus(error.message, "error");
-        showToast(error.message, "error", "Subscription failed");
-      } finally {
-        refs.subscribeSubmit.disabled = false;
-      }
-    });
-
-    refs.logoutButton.addEventListener("click", async () => {
-      refs.logoutButton.disabled = true;
-      try {
-        await fetchJson(authLogoutEndpoint, { method: "POST" });
-        state.authenticated = false;
-        updateManageButton();
-        closeModal();
-        closeSubscriptionsModal();
-        showToast("You have been signed out.", "success", "Logout");
-      } finally {
-        refs.logoutButton.disabled = false;
-      }
-    });
-
-    refs.form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const url = refs.urlInput.value.trim();
-      const alertsEnabled = refs.alertsEnabledInput.checked;
-      const emailAlertsEnabled = refs.emailAlertsEnabledInput.checked;
-      const alertOnOutage = refs.alertOnOutageInput.checked;
-      const alertOnSearch = refs.alertOnSearchInput.checked;
-      const alertOnTrack = refs.alertOnTrackInput.checked;
-      const alertOnRecovery = refs.alertOnRecoveryInput.checked;
-      if (!url) return;
-      const isEditing = state.editingId !== null;
-
-      refs.submitButton.disabled = true;
-      refs.cancelButton.disabled = true;
-      setManagerStatus(isEditing ? "Saving changes..." : "Adding instance...");
-
-      try {
-        await fetchJson(isEditing ? `${instancesEndpoint}/${state.editingId}` : instancesEndpoint, {
-          method: isEditing ? "PUT" : "POST",
-          body: JSON.stringify({
-            url,
-            alertsEnabled,
-            emailAlertsEnabled,
-            alertOnOutage,
-            alertOnSearch,
-            alertOnTrack,
-            alertOnRecovery
-          })
-        });
-        resetForm();
-        setManagerStatus(isEditing ? "Instance updated." : "Instance added.", "success");
-        showToast(
-          isEditing ? "Instance updated." : "Instance added.",
-          "success",
-          isEditing ? "Saved" : "Created"
-        );
-        await reloadAll();
-        await loadInstances();
-      } catch (error) {
-        if (error.message === "Authentication required") {
-          state.authenticated = false;
-          updateManageButton();
-          closeModal();
-          openAuthModal();
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          setStatus(refs.authStatus, payload.detail || "Invalid password", "error");
           return;
         }
-        setManagerStatus(error.message, "error");
-        showToast(error.message, "error", "Save failed");
-      } finally {
-        refs.submitButton.disabled = false;
-        refs.cancelButton.disabled = false;
+        refs.authModal.classList.remove("open");
+        refs.authPassword.value = "";
+        setStatus(refs.authStatus, "");
+        await loadStatusPage();
+      } catch (err) {
+        setStatus(refs.authStatus, err.message, "error");
       }
     });
 
-    refs.bulkForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const alertsEnabled = refs.bulkAlertsEnabledInput.checked;
-      const emailAlertsEnabled = refs.bulkEmailAlertsEnabledInput.checked;
-      const alertOnOutage = refs.bulkAlertOnOutageInput.checked;
-      const alertOnSearch = refs.bulkAlertOnSearchInput.checked;
-      const alertOnTrack = refs.bulkAlertOnTrackInput.checked;
-      const alertOnRecovery = refs.bulkAlertOnRecoveryInput.checked;
-
-      refs.bulkSubmitButton.disabled = true;
-      setBulkStatus("Applying settings to all instances...");
-
-      try {
-        const payload = await fetchJson(`${instancesEndpoint}/settings`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            alertsEnabled,
-            emailAlertsEnabled,
-            alertOnOutage,
-            alertOnSearch,
-            alertOnTrack,
-            alertOnRecovery
-          })
-        });
-        const updatedCount = payload && typeof payload.updated === "number" ? payload.updated : 0;
-        setBulkStatus(`Updated ${updatedCount} instances.`, "success");
-        showToast("Alert settings applied to all instances.", "success", "Bulk update");
-        if (state.editingId !== null) {
-          refs.alertsEnabledInput.checked = alertsEnabled;
-          refs.emailAlertsEnabledInput.checked = emailAlertsEnabled;
-          refs.alertOnOutageInput.checked = alertOnOutage;
-          refs.alertOnSearchInput.checked = alertOnSearch;
-          refs.alertOnTrackInput.checked = alertOnTrack;
-          refs.alertOnRecoveryInput.checked = alertOnRecovery;
-        }
-        await reloadAll();
-        await loadInstances();
-      } catch (error) {
-        if (error.message === "Authentication required") {
-          state.authenticated = false;
-          updateManageButton();
-          closeModal();
-          openAuthModal();
-          return;
-        }
-        setBulkStatus(error.message, "error");
-        showToast(error.message, "error", "Bulk update failed");
-      } finally {
-        refs.bulkSubmitButton.disabled = false;
-      }
-    });
-
-    refs.cancelButton.addEventListener("click", () => {
-      resetForm();
-      setManagerStatus("");
-    });
-
-    refs.statusList.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='subscribe']");
-      if (!button) return;
-      openSubscribeModal(Number(button.dataset.id), button.dataset.url || "");
-    });
-
-    refs.instanceList.addEventListener("click", async (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) return;
-
-      const action = button.dataset.action;
-      const id = Number(button.dataset.id);
-      const url = button.dataset.url || "";
-      const alertsEnabled = button.dataset.alertsEnabled === "true";
-      const emailAlertsEnabled = button.dataset.emailAlertsEnabled === "true";
-      const alertOnOutage = button.dataset.alertOnOutage === "true";
-      const alertOnSearch = button.dataset.alertOnSearch === "true";
-      const alertOnTrack = button.dataset.alertOnTrack === "true";
-      const alertOnRecovery = button.dataset.alertOnRecovery === "true";
-
-      if (action === "edit") {
-        state.editingId = id;
-        refs.urlInput.value = url;
-        refs.alertsEnabledInput.checked = alertsEnabled;
-        refs.emailAlertsEnabledInput.checked = emailAlertsEnabled;
-        refs.alertOnOutageInput.checked = alertOnOutage;
-        refs.alertOnSearchInput.checked = alertOnSearch;
-        refs.alertOnTrackInput.checked = alertOnTrack;
-        refs.alertOnRecoveryInput.checked = alertOnRecovery;
-        refs.formTitle.textContent = "Edit instance";
-        refs.submitButton.textContent = "Save changes";
-        refs.cancelButton.hidden = false;
-        refs.urlInput.focus();
-        setManagerStatus(`Editing ${url}`);
-        return;
-      }
-
-      if (action === "toggle-alerts") {
-        const nextAlertsEnabled = !alertsEnabled;
-        setManagerStatus(`${nextAlertsEnabled ? "Enabling" : "Disabling"} Discord alerts for ${url}...`);
-        try {
-          await fetchJson(`${instancesEndpoint}/${id}/alerts`, {
-            method: "PATCH",
-            body: JSON.stringify({ alertsEnabled: nextAlertsEnabled })
-          });
-          if (state.editingId === id) {
-            refs.alertsEnabledInput.checked = nextAlertsEnabled;
-          }
-          setManagerStatus(
-            nextAlertsEnabled ? "Discord alerts enabled." : "Discord alerts disabled.",
-            "success"
-          );
-          showToast(
-            nextAlertsEnabled ? "Discord alerts enabled." : "Discord alerts disabled.",
-            "success",
-            "Discord alerts"
-          );
-          await loadInstances();
-        } catch (error) {
-          if (error.message === "Authentication required") {
-            state.authenticated = false;
-            updateManageButton();
-            closeModal();
-            openAuthModal();
-            return;
-          }
-          setManagerStatus(error.message, "error");
-          showToast(error.message, "error", "Alerts update failed");
-        }
-        return;
-      }
-
-      if (action === "delete") {
-        if (!window.confirm(`Delete monitored instance?\\n\\n${url}`)) return;
-        setManagerStatus(`Deleting ${url}...`);
-        try {
-          await fetchJson(`${instancesEndpoint}/${id}`, { method: "DELETE" });
-          if (state.editingId === id) resetForm();
-          setManagerStatus("Instance deleted.", "success");
-          showToast("Instance deleted.", "success", "Deleted");
-          await reloadAll();
-          await loadInstances();
-        } catch (error) {
-          if (error.message === "Authentication required") {
-            state.authenticated = false;
-            updateManageButton();
-            closeModal();
-            openAuthModal();
-            return;
-          }
-          setManagerStatus(error.message, "error");
-          showToast(error.message, "error", "Delete failed");
-        }
-      }
-    });
-
-    refs.subscriptionsList.addEventListener("click", async (event) => {
-      const button = event.target.closest("button[data-action='delete-subscription']");
-      if (!button) return;
-
-      const id = Number(button.dataset.id);
-      const email = button.dataset.email || "";
-      const url = button.dataset.url || "";
-      if (!window.confirm(`Delete email subscription?\\n\\n${email}\\n${url}`)) return;
-
-      setSubscriptionsStatus(`Deleting subscription for ${email}...`);
-      try {
-        await fetchJson(`${subscriptionsEndpoint}/${id}`, { method: "DELETE" });
-        setSubscriptionsStatus("Subscription deleted.", "success");
-        showToast("Subscription deleted.", "success", "Deleted");
-        await loadSubscriptions();
-      } catch (error) {
-        if (error.message === "Authentication required") {
-          state.authenticated = false;
-          updateManageButton();
-          closeSubscriptionsModal();
-          openAuthModal();
-          return;
-        }
-        setSubscriptionsStatus(error.message, "error");
-        showToast(error.message, "error", "Delete failed");
-      }
-    });
-
-    resetForm();
-    updateManageButton();
-    refreshAuthStatus();
-    reloadAll().finally(() => {
-      refs.refreshInterval.textContent = formatIntervalLabel(state.checkIntervalSeconds);
-    });
-    setInterval(loadStatusPage, refreshMs);
+    // ---------- Boot ----------
+    loadStatusPage();
+    let refreshTimer = null;
+    function scheduleRefresh() {
+      const ms = Math.max(15, state.checkIntervalSeconds || 60) * 1000;
+      clearInterval(refreshTimer);
+      refreshTimer = setInterval(loadStatusPage, ms);
+    }
+    setTimeout(scheduleRefresh, 2000);
   </script>
 </body>
 </html>

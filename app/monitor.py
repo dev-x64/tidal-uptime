@@ -4,6 +4,7 @@ import asyncio
 import logging
 import smtplib
 import ssl
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -45,14 +46,32 @@ class ProbeIssue:
 
 
 @dataclass(slots=True)
+class SubcheckResult:
+    subcheck_id: int
+    label: str
+    url: str
+    ok: bool
+    status: int | None = None
+    error: str | None = None
+    response_time_ms: int | None = None
+
+
+@dataclass(slots=True)
 class EndpointResult:
     url: str
+    kind: str = "tidal"
     version: str | None = None
     api_ok: bool = False
     track_ok: bool = False
     api_issue: ProbeIssue | None = None
     search_issue: ProbeIssue | None = None
     track_issue: ProbeIssue | None = None
+    response_time_ms: int | None = None
+    subcheck_results: list[SubcheckResult] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.subcheck_results is None:
+            self.subcheck_results = []
 
     @property
     def issues(self) -> tuple[ProbeIssue, ...]:
@@ -136,6 +155,7 @@ class EndpointMonitor:
         self._refresh_task_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._manual_refresh_task: asyncio.Task[None] | None = None
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self._stop_event = asyncio.Event()
 
     async def start(self) -> None:
@@ -145,9 +165,11 @@ class EndpointMonitor:
         if stored_snapshot is not None:
             async with self._lock:
                 self._snapshot = stored_snapshot
-        await self.refresh()
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run_forever())
+        initial_task = asyncio.create_task(self.refresh())
+        self._background_tasks.add(initial_task)
+        initial_task.add_done_callback(self._finalize_background_task)
 
     async def stop(self) -> None:
         self._stop_event.set()
@@ -155,6 +177,8 @@ class EndpointMonitor:
             await self._task
         if self._manual_refresh_task is not None:
             await self._manual_refresh_task
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
     async def get_snapshot(self) -> dict[str, Any]:
         async with self._lock:
@@ -167,6 +191,27 @@ class EndpointMonitor:
 
     async def list_endpoints(self) -> list[dict[str, Any]]:
         return await self.store.list_endpoints()
+
+    async def list_groups(self) -> list[dict[str, Any]]:
+        return await self.store.list_groups()
+
+    async def create_group(self, name: str, sort_order: int = 0) -> dict[str, Any]:
+        return await self.store.create_group(name, sort_order)
+
+    async def update_group(self, group_id: int, name: str, sort_order: int) -> dict[str, Any]:
+        return await self.store.update_group(group_id, name, sort_order)
+
+    async def delete_group(self, group_id: int) -> None:
+        await self.store.delete_group(group_id)
+
+    async def replace_subchecks_for_endpoint(
+        self,
+        endpoint_id: int,
+        subchecks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        result = await self.store.replace_subchecks_for_endpoint(endpoint_id, subchecks)
+        await self.store.clear_alert_state(endpoint_id)
+        return result
 
     async def create_email_subscription(self, endpoint_id: int, email: str) -> dict[str, Any]:
         return await self.store.create_email_subscription(endpoint_id, email)
@@ -203,54 +248,57 @@ class EndpointMonitor:
 
     async def create_endpoint(
         self,
-        url: str,
-        alerts_enabled: bool = True,
-        email_alerts_enabled: bool = True,
-        alert_on_outage: bool = True,
-        alert_on_search: bool = True,
-        alert_on_track: bool = True,
-        alert_on_recovery: bool = True,
+        payload: dict[str, Any],
+        subchecks: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        endpoint = await self.store.create_endpoint(
-            url,
-            alerts_enabled,
-            email_alerts_enabled,
-            alert_on_outage,
-            alert_on_search,
-            alert_on_track,
-            alert_on_recovery,
-        )
-        await self._refresh_selected_endpoints([endpoint])
+        endpoint = await self.store.create_endpoint(payload)
+        if subchecks is not None:
+            await self.store.replace_subchecks_for_endpoint(int(endpoint["id"]), subchecks)
+            endpoint["subchecks"] = await self._fetch_subchecks(int(endpoint["id"]))
+        self._spawn_background_refresh([endpoint])
         return endpoint
 
     async def update_endpoint(
         self,
         endpoint_id: int,
-        url: str,
-        alerts_enabled: bool = True,
-        email_alerts_enabled: bool = True,
-        alert_on_outage: bool = True,
-        alert_on_search: bool = True,
-        alert_on_track: bool = True,
-        alert_on_recovery: bool = True,
+        payload: dict[str, Any],
+        subchecks: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        endpoint = await self.store.update_endpoint(
-            endpoint_id,
-            url,
-            alerts_enabled,
-            email_alerts_enabled,
-            alert_on_outage,
-            alert_on_search,
-            alert_on_track,
-            alert_on_recovery,
-        )
+        endpoint = await self.store.update_endpoint(endpoint_id, payload)
+        if subchecks is not None:
+            await self.store.replace_subchecks_for_endpoint(endpoint_id, subchecks)
+            endpoint["subchecks"] = await self._fetch_subchecks(endpoint_id)
         await self.store.clear_alert_state(endpoint_id)
-        await self._refresh_selected_endpoints([endpoint])
+        self._spawn_background_refresh([endpoint])
         return endpoint
+
+    def _spawn_background_refresh(self, endpoints: list[dict[str, Any]]) -> None:
+        if not endpoints:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self._refresh_selected_endpoints(endpoints))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._finalize_background_task)
+
+    def _finalize_background_task(self, task: asyncio.Task[None]) -> None:
+        self._background_tasks.discard(task)
+        try:
+            task.result()
+        except Exception:
+            logger.exception("Background endpoint refresh failed")
+
+    async def _fetch_subchecks(self, endpoint_id: int) -> list[dict[str, Any]]:
+        all_endpoints = await self.store.list_endpoints()
+        for endpoint in all_endpoints:
+            if int(endpoint["id"]) == endpoint_id:
+                return endpoint.get("subchecks") or []
+        return []
 
     async def update_all_endpoint_settings(
         self,
-        alerts_enabled: bool,
         email_alerts_enabled: bool,
         alert_on_outage: bool,
         alert_on_search: bool,
@@ -258,7 +306,6 @@ class EndpointMonitor:
         alert_on_recovery: bool,
     ) -> int:
         updated = await self.store.update_all_endpoint_alert_settings(
-            alerts_enabled,
             email_alerts_enabled,
             alert_on_outage,
             alert_on_search,
@@ -267,15 +314,6 @@ class EndpointMonitor:
         )
         await self.store.clear_all_alert_states()
         return updated
-
-    async def set_endpoint_alerts_enabled(
-        self,
-        endpoint_id: int,
-        alerts_enabled: bool,
-    ) -> dict[str, Any]:
-        endpoint = await self.store.update_endpoint_alerts_enabled(endpoint_id, alerts_enabled)
-        await self.store.clear_alert_state(endpoint_id)
-        return endpoint
 
     async def delete_endpoint(self, endpoint_id: int) -> None:
         await self.store.delete_endpoint(endpoint_id)
@@ -302,8 +340,7 @@ class EndpointMonitor:
     async def refresh(self) -> None:
         async with self._refresh_lock:
             endpoints = await self.store.list_endpoints()
-            endpoint_urls = [endpoint["url"] for endpoint in endpoints]
-            logger.info("Refreshing monitor snapshot for %s endpoints", len(endpoint_urls))
+            logger.info("Refreshing monitor snapshot for %s endpoints", len(endpoints))
 
             timeout = httpx.Timeout(self.settings.request_timeout_seconds)
             limits = httpx.Limits(max_connections=25, max_keepalive_connections=10)
@@ -317,43 +354,17 @@ class EndpointMonitor:
             ) as client:
                 await self.reference_api_version.ensure_fresh(client)
                 results = await asyncio.gather(
-                    *(self._check_endpoint(client, endpoint) for endpoint in endpoint_urls)
+                    *(self._check_endpoint(client, endpoint) for endpoint in endpoints)
                 )
 
                 last_updated = utc_timestamp()
-                snapshot = {
-                    "lastUpdated": last_updated,
-                    "api": [],
-                    "streaming": [],
-                    "down": [],
-                }
-
-                persisted_results: list[dict[str, Any]] = []
-
-                for result in results:
-                    persisted_results.append(
-                        {
-                            "url": result.url,
-                            "version": result.version,
-                            "api_ok": result.api_ok,
-                            "search_ok": result.api_ok and result.search_issue is None,
-                            "track_ok": result.track_ok,
-                            "down_status": result.primary_issue.status if result.primary_issue else None,
-                            "down_error": result.primary_issue.error if result.primary_issue else None,
-                        }
-                    )
-                    if result.api_ok and result.version:
-                        snapshot["api"].append({"url": result.url, "version": result.version})
-                    if result.track_ok and result.version:
-                        snapshot["streaming"].append({"url": result.url, "version": result.version})
-                    if result.primary_issue is not None:
-                        snapshot["down"].append(
-                            {
-                                "url": result.url,
-                                "status": result.primary_issue.status,
-                                "error": result.primary_issue.error,
-                            }
-                        )
+                persisted_results = [
+                    self._result_to_persisted_payload(result)
+                    for result in results
+                ]
+                snapshot = self._build_snapshot_for_status_json(
+                    last_updated, endpoints, results
+                )
 
                 alert_states = await self.store.load_alert_states()
                 email_subscriptions = await self.store.load_email_subscriptions_by_endpoint()
@@ -366,14 +377,67 @@ class EndpointMonitor:
                 )
                 await self.store.save_alert_states(persisted_alert_states)
 
-            await self.store.save_snapshot(snapshot, persisted_results)
+            poll_run_id = await self.store.save_snapshot(snapshot, persisted_results)
+            if poll_run_id is not None:
+                subcheck_payload = self._collect_subcheck_results(results)
+                if subcheck_payload:
+                    await self.store.save_subcheck_results(poll_run_id, subcheck_payload)
 
             async with self._lock:
                 self._snapshot = snapshot
 
+    def _collect_subcheck_results(
+        self, results: list[EndpointResult]
+    ) -> list[dict[str, Any]]:
+        payload: list[dict[str, Any]] = []
+        for result in results:
+            for sub in result.subcheck_results:
+                payload.append(
+                    {
+                        "subcheck_id": sub.subcheck_id,
+                        "ok": sub.ok,
+                        "status_code": sub.status,
+                        "error": sub.error,
+                        "response_time_ms": sub.response_time_ms,
+                    }
+                )
+        return payload
+
+    def _build_snapshot_for_status_json(
+        self,
+        last_updated: str,
+        endpoints: list[dict[str, Any]],
+        results: list[EndpointResult],
+    ) -> dict[str, Any]:
+        snapshot: dict[str, Any] = {
+            "lastUpdated": last_updated,
+            "api": [],
+            "streaming": [],
+            "down": [],
+        }
+        endpoints_by_url = {str(endpoint["url"]): endpoint for endpoint in endpoints}
+        for result in results:
+            endpoint = endpoints_by_url.get(result.url)
+            if endpoint is None or str(endpoint.get("kind") or "tidal") != "tidal":
+                continue
+            if result.api_ok and result.version:
+                snapshot["api"].append({"url": result.url, "version": result.version})
+            if result.track_ok and result.version:
+                snapshot["streaming"].append({"url": result.url, "version": result.version})
+            if result.primary_issue is not None:
+                snapshot["down"].append(
+                    {
+                        "url": result.url,
+                        "status": result.primary_issue.status,
+                        "error": result.primary_issue.error,
+                    }
+                )
+        return snapshot
+
     async def _refresh_selected_endpoints(self, selected_endpoints: list[dict[str, Any]]) -> None:
         async with self._refresh_lock:
             all_endpoints = await self.store.list_endpoints()
+            endpoints_by_id = {int(endpoint["id"]): endpoint for endpoint in all_endpoints}
             selected_endpoint_ids = {int(endpoint["id"]) for endpoint in selected_endpoints}
             latest_results_by_id = await self.store.load_latest_endpoint_results()
 
@@ -388,11 +452,16 @@ class EndpointMonitor:
                 follow_redirects=True,
             ) as client:
                 await self.reference_api_version.ensure_fresh(client)
+                full_endpoints = [
+                    endpoints_by_id[int(endpoint["id"])]
+                    for endpoint in selected_endpoints
+                    if int(endpoint["id"]) in endpoints_by_id
+                ]
                 selected_results = await asyncio.gather(
-                    *(self._check_endpoint(client, str(endpoint["url"])) for endpoint in selected_endpoints)
+                    *(self._check_endpoint(client, endpoint) for endpoint in full_endpoints)
                 )
 
-                for endpoint, result in zip(selected_endpoints, selected_results):
+                for endpoint, result in zip(full_endpoints, selected_results):
                     latest_results_by_id[int(endpoint["id"])] = self._result_to_persisted_payload(result)
 
                 last_updated = utc_timestamp()
@@ -404,24 +473,26 @@ class EndpointMonitor:
                     for endpoint in all_endpoints
                     if (result := latest_results_by_id.get(int(endpoint["id"]))) is not None
                 ]
-                snapshot = self._build_snapshot_from_persisted_results(last_updated, persisted_results)
+                snapshot = self._build_snapshot_from_persisted_results(
+                    last_updated, all_endpoints, persisted_results
+                )
 
                 alert_states = await self.store.load_alert_states()
                 email_subscriptions = await self.store.load_email_subscriptions_by_endpoint()
                 persisted_alert_states = await self._process_alerts(
                     client=client,
-                    endpoints=[
-                        endpoint
-                        for endpoint in all_endpoints
-                        if int(endpoint["id"]) in selected_endpoint_ids
-                    ],
+                    endpoints=full_endpoints,
                     results=selected_results,
                     alert_states=alert_states,
                     email_subscriptions=email_subscriptions,
                 )
                 await self.store.save_alert_states(persisted_alert_states)
 
-            await self.store.save_snapshot(snapshot, persisted_results)
+            poll_run_id = await self.store.save_snapshot(snapshot, persisted_results)
+            if poll_run_id is not None:
+                subcheck_payload = self._collect_subcheck_results(selected_results)
+                if subcheck_payload:
+                    await self.store.save_subcheck_results(poll_run_id, subcheck_payload)
 
             async with self._lock:
                 self._snapshot = snapshot
@@ -440,6 +511,7 @@ class EndpointMonitor:
     def _build_snapshot_from_persisted_results(
         self,
         last_updated: str,
+        endpoints: list[dict[str, Any]],
         persisted_results: list[dict[str, Any]],
     ) -> dict[str, Any]:
         snapshot = {
@@ -448,8 +520,13 @@ class EndpointMonitor:
             "streaming": [],
             "down": [],
         }
-
+        kind_by_url = {
+            str(endpoint["url"]): str(endpoint.get("kind") or "tidal")
+            for endpoint in endpoints
+        }
         for result in persisted_results:
+            if kind_by_url.get(result["url"]) != "tidal":
+                continue
             if result["api_ok"] and result["version"]:
                 snapshot["api"].append({"url": result["url"], "version": result["version"]})
             if result["track_ok"] and result["version"]:
@@ -475,44 +552,388 @@ class EndpointMonitor:
             "track_ok": result.track_ok,
             "down_status": primary_issue.status if primary_issue else None,
             "down_error": primary_issue.error if primary_issue else None,
+            "response_time_ms": result.response_time_ms,
         }
 
-    async def _check_endpoint(self, client: httpx.AsyncClient, base_url: str) -> EndpointResult:
-        api_ok = False
-        track_ok = False
-        version: str | None = None
-        search_issue: ProbeIssue | None = None
-        track_issue: ProbeIssue | None = None
+    async def _check_endpoint(
+        self, client: httpx.AsyncClient, endpoint: dict[str, Any]
+    ) -> EndpointResult:
+        kind = str(endpoint.get("kind") or "tidal")
+        if kind == "http":
+            return await self._check_endpoint_http(client, endpoint)
+        return await self._check_endpoint_tidal(client, endpoint)
 
+    PROBE_GAP_SECONDS = 1.0
+
+    async def _check_endpoint_tidal(
+        self, client: httpx.AsyncClient, endpoint: dict[str, Any]
+    ) -> EndpointResult:
+        base_url = str(endpoint["url"])
+
+        start = time.perf_counter()
         try:
             version = await self._check_root(client, base_url)
-            api_ok = True
         except ProbeFailure as failure:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            await asyncio.sleep(self.PROBE_GAP_SECONDS)
+            subcheck_results = await self._run_subchecks_sequential(client, endpoint)
             return EndpointResult(
                 url=base_url,
+                kind="tidal",
                 api_issue=ProbeIssue(probe="api", status=failure.status, error=failure.error),
+                response_time_ms=elapsed_ms,
+                subcheck_results=subcheck_results,
             )
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
 
+        await asyncio.sleep(self.PROBE_GAP_SECONDS)
         try:
             await self._check_search(client, base_url)
+            search_issue: ProbeIssue | None = None
         except ProbeFailure as failure:
             search_issue = ProbeIssue(probe="search", status=failure.status, error=failure.error)
 
+        await asyncio.sleep(self.PROBE_GAP_SECONDS)
         try:
             await self._check_track(client, base_url)
+            track_issue: ProbeIssue | None = None
+            track_ok = True
         except ProbeFailure as failure:
             track_issue = ProbeIssue(probe="track", status=failure.status, error=failure.error)
-        else:
-            track_ok = True
+            track_ok = False
+
+        subcheck_results = await self._run_subchecks_sequential(
+            client, endpoint, gap_before=True
+        )
 
         return EndpointResult(
             url=base_url,
+            kind="tidal",
             version=version,
-            api_ok=api_ok,
+            api_ok=True,
             track_ok=track_ok,
             search_issue=search_issue,
             track_issue=track_issue,
+            response_time_ms=elapsed_ms,
+            subcheck_results=subcheck_results,
         )
+
+    async def _check_endpoint_http(
+        self, client: httpx.AsyncClient, endpoint: dict[str, Any]
+    ) -> EndpointResult:
+        url = str(endpoint["url"])
+        method = str(endpoint.get("request_method") or "GET")
+        expected_status = endpoint.get("expected_status")
+        match_type = endpoint.get("match_type")
+        match_path = endpoint.get("match_path")
+        match_value = endpoint.get("match_value")
+
+        primary_failure, primary_elapsed_ms = await self._run_match_check(
+            client=client,
+            url=url,
+            method=method,
+            expected_status=expected_status,
+            match_type=match_type,
+            match_path=match_path,
+            match_value=match_value,
+            error_label="Check failed",
+        )
+        subcheck_results = await self._run_subchecks_sequential(
+            client, endpoint, gap_before=True
+        )
+        await self._fetch_and_store_metrics(client, endpoint)
+
+        any_subcheck_failure = any(not item.ok for item in subcheck_results)
+
+        if primary_failure is not None:
+            return EndpointResult(
+                url=url,
+                kind="http",
+                api_issue=ProbeIssue(
+                    probe="api", status=primary_failure.status, error=primary_failure.error
+                ),
+                response_time_ms=primary_elapsed_ms,
+                subcheck_results=subcheck_results,
+            )
+
+        return EndpointResult(
+            url=url,
+            kind="http",
+            version=None,
+            api_ok=True,
+            track_ok=not any_subcheck_failure,
+            search_issue=(
+                ProbeIssue(probe="search", status=502, error="Sub-check failed")
+                if any_subcheck_failure
+                else None
+            ),
+            response_time_ms=primary_elapsed_ms,
+            subcheck_results=subcheck_results,
+        )
+
+    async def _fetch_and_store_metrics(
+        self, client: httpx.AsyncClient, endpoint: dict[str, Any]
+    ) -> None:
+        metrics_url = (endpoint.get("metrics_url") or "").strip()
+        if not metrics_url:
+            return
+        await asyncio.sleep(self.PROBE_GAP_SECONDS)
+        start = time.perf_counter()
+        record: dict[str, Any] = {
+            "fetched_at": utc_timestamp(),
+            "ok": False,
+            "status_code": None,
+            "error": None,
+            "payload_json": None,
+            "response_time_ms": None,
+        }
+        try:
+            response = await client.get(metrics_url)
+        except httpx.TimeoutException:
+            record["response_time_ms"] = int((time.perf_counter() - start) * 1000)
+            record["error"] = "timeout"
+        except httpx.RequestError as exc:
+            record["response_time_ms"] = int((time.perf_counter() - start) * 1000)
+            record["error"] = exc.__class__.__name__
+        else:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            record["response_time_ms"] = elapsed_ms
+            record["status_code"] = int(response.status_code)
+            text = response.text
+            if response.status_code >= 400:
+                record["error"] = f"HTTP {response.status_code}"
+            else:
+                record["ok"] = True
+            record["payload_json"] = text[: self.settings.metrics_max_payload_bytes]
+        try:
+            await self.store.save_endpoint_metrics(int(endpoint["id"]), record)
+        except Exception:
+            logger.exception("Failed to persist metrics for endpoint %s", endpoint.get("id"))
+
+    async def _run_subchecks_sequential(
+        self,
+        client: httpx.AsyncClient,
+        endpoint: dict[str, Any],
+        gap_before: bool = False,
+    ) -> list[SubcheckResult]:
+        subchecks = endpoint.get("subchecks") or []
+        if not subchecks:
+            return []
+        results: list[SubcheckResult] = []
+        for index, sub in enumerate(subchecks):
+            if gap_before or index > 0:
+                await asyncio.sleep(self.PROBE_GAP_SECONDS)
+            results.append(await self._run_single_subcheck(client, sub))
+        return results
+
+    async def _run_subchecks(
+        self, client: httpx.AsyncClient, endpoint: dict[str, Any]
+    ) -> list[SubcheckResult]:
+        subchecks = endpoint.get("subchecks") or []
+        if not subchecks:
+            return []
+        results = await asyncio.gather(
+            *(self._run_single_subcheck(client, sub) for sub in subchecks)
+        )
+        return list(results)
+
+    async def _run_single_subcheck(
+        self, client: httpx.AsyncClient, sub: dict[str, Any]
+    ) -> SubcheckResult:
+        url = str(sub.get("url") or "")
+        label = str(sub.get("label") or url)
+        if not url:
+            return SubcheckResult(
+                subcheck_id=int(sub["id"]),
+                label=label,
+                url=url,
+                ok=False,
+                status=400,
+                error="missing url",
+            )
+        failure, elapsed_ms = await self._run_match_check(
+            client=client,
+            url=url,
+            method=str(sub.get("request_method") or "GET"),
+            expected_status=sub.get("expected_status"),
+            match_type=sub.get("match_type"),
+            match_path=sub.get("match_path"),
+            match_value=sub.get("match_value"),
+            error_label=f"{label} failed",
+        )
+        if failure is None:
+            return SubcheckResult(
+                subcheck_id=int(sub["id"]),
+                label=label,
+                url=url,
+                ok=True,
+                response_time_ms=elapsed_ms,
+            )
+        return SubcheckResult(
+            subcheck_id=int(sub["id"]),
+            label=label,
+            url=url,
+            ok=False,
+            status=failure.status,
+            error=failure.error,
+            response_time_ms=elapsed_ms,
+        )
+
+    async def _run_match_check(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        url: str,
+        method: str,
+        expected_status: int | None,
+        match_type: str | None,
+        match_path: str | None,
+        match_value: str | None,
+        error_label: str,
+    ) -> tuple[ProbeFailure | None, int | None]:
+        start = time.perf_counter()
+        try:
+            response = await client.request(method.upper(), url)
+        except httpx.TimeoutException:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            return ProbeFailure(status=504, error=f"{error_label}: timeout"), elapsed_ms
+        except httpx.RequestError as exc:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            return (
+                ProbeFailure(status=503, error=f"{error_label}: {exc.__class__.__name__}"),
+                elapsed_ms,
+            )
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+
+        if expected_status is not None:
+            if int(response.status_code) != int(expected_status):
+                return (
+                    ProbeFailure(
+                        status=response.status_code,
+                        error=f"expected status {expected_status}, got {response.status_code}",
+                    ),
+                    elapsed_ms,
+                )
+        else:
+            if response.status_code >= 400:
+                detail = self._extract_error_message(response, fallback=error_label)
+                return ProbeFailure(status=response.status_code, error=detail), elapsed_ms
+
+        normalized_match = (match_type or "").strip().lower() or None
+        if normalized_match in (None, "status"):
+            return None, elapsed_ms
+
+        body_text = response.text
+        if normalized_match == "contains":
+            needle = (match_value or "")
+            if not needle:
+                return None, elapsed_ms
+            if needle not in body_text:
+                return (
+                    ProbeFailure(status=422, error=f"body missing '{needle[:40]}'"),
+                    elapsed_ms,
+                )
+            return None, elapsed_ms
+
+        try:
+            payload = response.json()
+        except ValueError:
+            return ProbeFailure(status=502, error="invalid JSON"), elapsed_ms
+
+        path = (match_path or "").strip()
+        value = self._json_path_lookup(payload, path) if path else payload
+        if normalized_match == "json_key":
+            if value is None:
+                return (
+                    ProbeFailure(status=422, error=f"missing key '{path or '<root>'}'"),
+                    elapsed_ms,
+                )
+            if isinstance(value, (list, dict)) and not value:
+                return (
+                    ProbeFailure(status=422, error=f"empty value at '{path or '<root>'}'"),
+                    elapsed_ms,
+                )
+            return None, elapsed_ms
+        if normalized_match == "json_equals":
+            expected_raw = match_value or ""
+            actual_str = str(value) if value is not None else ""
+            if actual_str != expected_raw:
+                return (
+                    ProbeFailure(
+                        status=422,
+                        error=f"{path or '<root>'}={actual_str[:40]} (expected {expected_raw[:40]})",
+                    ),
+                    elapsed_ms,
+                )
+            return None, elapsed_ms
+        return None, elapsed_ms
+
+    def _json_path_lookup(self, payload: Any, path: str) -> Any:
+        tokens = self._tokenize_json_path(path)
+        if tokens is None:
+            return None
+        current: Any = payload
+        for token in tokens:
+            if isinstance(token, int):
+                if not isinstance(current, list):
+                    return None
+                if token < 0 or token >= len(current):
+                    return None
+                current = current[token]
+                continue
+            if isinstance(current, dict):
+                if token not in current:
+                    return None
+                current = current[token]
+            elif isinstance(current, list):
+                try:
+                    index = int(token)
+                except ValueError:
+                    return None
+                if index < 0 or index >= len(current):
+                    return None
+                current = current[index]
+            else:
+                return None
+        return current
+
+    @staticmethod
+    def _tokenize_json_path(path: str) -> list[str | int] | None:
+        tokens: list[str | int] = []
+        i = 0
+        n = len(path)
+        buf: list[str] = []
+
+        def flush_key() -> None:
+            if buf:
+                tokens.append("".join(buf))
+                buf.clear()
+
+        while i < n:
+            ch = path[i]
+            if ch == ".":
+                flush_key()
+                i += 1
+                continue
+            if ch == "[":
+                flush_key()
+                end = path.find("]", i + 1)
+                if end == -1:
+                    return None
+                inner = path[i + 1 : end].strip()
+                if inner.startswith(("'", '"')) and inner.endswith(("'", '"')) and len(inner) >= 2:
+                    tokens.append(inner[1:-1])
+                else:
+                    try:
+                        tokens.append(int(inner))
+                    except ValueError:
+                        tokens.append(inner)
+                i = end + 1
+                continue
+            buf.append(ch)
+            i += 1
+        flush_key()
+        return tokens
 
     async def _check_root(self, client: httpx.AsyncClient, base_url: str) -> str:
         payload = await self._request_json(
@@ -655,18 +1076,14 @@ class EndpointMonitor:
             endpoint_id = int(endpoint["id"])
             url = str(endpoint["url"])
             current_state = AlertState.from_record(alert_states.get(endpoint_id))
-            discord_channel_active = (
-                self.settings.discord_alerting_enabled and bool(endpoint.get("alerts_enabled", True))
-            )
             endpoint_email_recipients = email_subscriptions.get(endpoint_id, [])
             email_channel_active = (
                 bool(endpoint_email_recipients)
                 and self.settings.email_alerting_enabled
                 and bool(endpoint.get("email_alerts_enabled", True))
             )
-            any_channel_active = discord_channel_active or email_channel_active
             result = results_by_url.get(url)
-            if not any_channel_active:
+            if not email_channel_active:
                 persisted_states.append(self._clear_alert_state(utc_timestamp()).to_record(endpoint_id))
                 continue
             condition = (
@@ -675,18 +1092,15 @@ class EndpointMonitor:
                 else None
             )
             updated_state = await self._advance_alert_state(
-                client=client,
                 url=url,
                 state=current_state,
                 condition=condition,
-                discord_enabled=discord_channel_active,
-                email_recipients=endpoint_email_recipients if email_channel_active else [],
+                email_recipients=endpoint_email_recipients,
                 send_failure_alert=(
                     condition is not None
-                    and any_channel_active
                     and self._endpoint_allows_failure_alert(endpoint, condition)
                 ),
-                send_recovery_alert=any_channel_active and self._endpoint_allows_recovery_alert(endpoint),
+                send_recovery_alert=self._endpoint_allows_recovery_alert(endpoint),
             )
             persisted_states.append(updated_state.to_record(endpoint_id))
 
@@ -694,18 +1108,16 @@ class EndpointMonitor:
 
     async def _advance_alert_state(
         self,
-        client: httpx.AsyncClient,
         url: str,
         state: AlertState,
         condition: AlertCondition | None,
-        discord_enabled: bool,
         email_recipients: list[str],
         send_failure_alert: bool,
         send_recovery_alert: bool,
     ) -> AlertState:
         now = utc_timestamp()
-        failure_threshold = max(int(self.settings.discord_alert_failure_streak), 1)
-        recovery_threshold = max(int(self.settings.discord_alert_recovery_streak), 1)
+        failure_threshold = max(int(self.settings.alert_failure_streak), 1)
+        recovery_threshold = max(int(self.settings.alert_recovery_streak), 1)
 
         if condition is not None:
             if state.phase == ALERT_PHASE_FAILING:
@@ -728,26 +1140,17 @@ class EndpointMonitor:
                 and state.last_failure_alert_streak == 0
                 and state.failure_streak >= failure_threshold
             ):
-                discord_content = self._build_failure_alert_message(
-                    url=url,
-                    condition=condition,
-                    failure_streak=state.failure_streak,
-                    timestamp=now,
-                )
                 email_subject, email_body, email_html_body = self._build_failure_alert_email(
                     url=url,
                     condition=condition,
                     failure_streak=state.failure_streak,
                     timestamp=now,
                 )
-                if await self._dispatch_alert(
-                    client=client,
-                    discord_enabled=discord_enabled,
-                    discord_content=discord_content,
-                    email_subject=email_subject,
-                    email_body=email_body,
-                    email_html_body=email_html_body,
-                    email_recipients=email_recipients,
+                if await self._send_email_alert(
+                    email_recipients,
+                    email_subject,
+                    email_body,
+                    email_html_body,
                 ):
                     state.last_failure_alert_streak = state.failure_streak
 
@@ -761,26 +1164,17 @@ class EndpointMonitor:
                 state.recovery_streak = 1
                 state.updated_at = now
                 if state.recovery_streak >= recovery_threshold:
-                    discord_content = self._build_recovery_alert_message(
-                        url=url,
-                        state=state,
-                        recovery_streak=state.recovery_streak,
-                        timestamp=now,
-                    )
                     email_subject, email_body, email_html_body = self._build_recovery_alert_email(
                         url=url,
                         state=state,
                         recovery_streak=state.recovery_streak,
                         timestamp=now,
                     )
-                    if await self._dispatch_alert(
-                        client=client,
-                        discord_enabled=discord_enabled,
-                        discord_content=discord_content,
-                        email_subject=email_subject,
-                        email_body=email_body,
-                        email_html_body=email_html_body,
-                        email_recipients=email_recipients,
+                    if await self._send_email_alert(
+                        email_recipients,
+                        email_subject,
+                        email_body,
+                        email_html_body,
                     ):
                         return self._clear_alert_state(now)
                 return state
@@ -790,26 +1184,17 @@ class EndpointMonitor:
             state.recovery_streak += 1
             state.updated_at = now
             if state.recovery_streak >= recovery_threshold:
-                discord_content = self._build_recovery_alert_message(
-                    url=url,
-                    state=state,
-                    recovery_streak=state.recovery_streak,
-                    timestamp=now,
-                )
                 email_subject, email_body, email_html_body = self._build_recovery_alert_email(
                     url=url,
                     state=state,
                     recovery_streak=state.recovery_streak,
                     timestamp=now,
                 )
-                if await self._dispatch_alert(
-                    client=client,
-                    discord_enabled=discord_enabled,
-                    discord_content=discord_content,
-                    email_subject=email_subject,
-                    email_body=email_body,
-                    email_html_body=email_html_body,
-                    email_recipients=email_recipients,
+                if await self._send_email_alert(
+                    email_recipients,
+                    email_subject,
+                    email_body,
+                    email_html_body,
                 ):
                     return self._clear_alert_state(now)
             return state
@@ -824,8 +1209,8 @@ class EndpointMonitor:
         if result is None:
             return None
 
-        allowed_probes = set(self.settings.discord_alert_trigger_probes)
-        allowed_states = set(self.settings.discord_alert_trigger_states)
+        allowed_probes = set(self.settings.alert_trigger_probes)
+        allowed_states = set(self.settings.alert_trigger_states)
         filtered_issues = tuple(
             issue
             for issue in result.issues
@@ -842,41 +1227,6 @@ class EndpointMonitor:
         key = f"{state}|{','.join(f'{issue.probe}:{issue.status}' for issue in filtered_issues)}"
         summary = ", ".join(self._format_issue(issue) for issue in filtered_issues)
         return AlertCondition(state=state, key=key, summary=summary, issues=filtered_issues)
-
-    def _build_failure_alert_message(
-        self,
-        url: str,
-        condition: AlertCondition,
-        failure_streak: int,
-        timestamp: str,
-    ) -> str:
-        title = "🚨 API outage detected" if condition.state == "outage" else "⚠️ API degraded"
-        return (
-            f"{title}\n"
-            f"**Endpoint:** {url}\n"
-            f"**State:** {self._format_state_label(condition.state)}\n"
-            f"**Checks:**\n{self._format_issues_block(condition.issues)}\n"
-            f"**Failed polls:** {failure_streak} in a row\n"
-            f"**Time:** {timestamp}"
-        )
-
-    def _build_recovery_alert_message(
-        self,
-        url: str,
-        state: AlertState,
-        recovery_streak: int,
-        timestamp: str,
-    ) -> str:
-        previous_state = state.condition_state or "degraded"
-        previous_summary = self._format_previous_summary_block(state.condition_summary)
-        return (
-            f"✅ API recovered\n"
-            f"**Endpoint:** {url}\n"
-            f"**Recovered from:** {self._format_state_label(previous_state)}\n"
-            f"**Previous checks:**\n{previous_summary}\n"
-            f"**Successful polls:** {recovery_streak} in a row\n"
-            f"**Time:** {timestamp}"
-        )
 
     def _build_failure_alert_email(
         self,
@@ -942,50 +1292,6 @@ class EndpointMonitor:
         )
         return subject, text_body, html_body
 
-    async def _dispatch_alert(
-        self,
-        client: httpx.AsyncClient,
-        discord_enabled: bool,
-        discord_content: str,
-        email_subject: str,
-        email_body: str,
-        email_html_body: str,
-        email_recipients: list[str],
-    ) -> bool:
-        delivered = False
-        if discord_enabled and self.settings.discord_alerting_enabled:
-            delivered = await self._send_discord_alert(client, discord_content) or delivered
-        if email_recipients and self.settings.email_alerting_enabled:
-            delivered = (
-                await self._send_email_alert(
-                    email_recipients,
-                    email_subject,
-                    email_body,
-                    email_html_body,
-                )
-                or delivered
-            )
-        return delivered
-
-    async def _send_discord_alert(self, client: httpx.AsyncClient, content: str) -> bool:
-        webhook_url = self.settings.discord_webhook_url
-        if not webhook_url:
-            return False
-
-        try:
-            response = await client.post(
-                webhook_url,
-                json={
-                    "username": self.settings.discord_alert_username,
-                    "content": content,
-                },
-            )
-            response.raise_for_status()
-        except httpx.HTTPError:
-            logger.exception("Failed to send Discord alert")
-            return False
-        return True
-
     async def _send_email_alert(
         self,
         recipients: list[str],
@@ -993,7 +1299,7 @@ class EndpointMonitor:
         body: str,
         html_body: str,
     ) -> bool:
-        if not recipients:
+        if not recipients or not self.settings.email_alerting_enabled:
             return False
 
         try:
@@ -1069,9 +1375,6 @@ class EndpointMonitor:
         }.get(issue.probe, issue.probe)
         return f"{probe_label} {issue.status} ({issue.error})"
 
-    def _format_issues_block(self, issues: tuple[ProbeIssue, ...]) -> str:
-        return "\n".join(f"• {self._format_issue(issue)}" for issue in issues)
-
     def _format_issues_text(self, issues: tuple[ProbeIssue, ...]) -> str:
         return "\n".join(f"- {self._format_issue(issue)}" for issue in issues)
 
@@ -1081,11 +1384,6 @@ class EndpointMonitor:
             for issue in issues
         )
         return f"<ul style=\"margin:0; padding-left:18px; color:#344642;\">{items}</ul>"
-
-    def _format_previous_summary_block(self, summary: str | None) -> str:
-        if not summary:
-            return "• Unknown failure"
-        return "\n".join(f"• {item.strip()}" for item in summary.split(",") if item.strip())
 
     def _format_previous_summary_text(self, summary: str | None) -> str:
         if not summary:
@@ -1194,6 +1492,6 @@ class EndpointMonitor:
 
     def _endpoint_allows_recovery_alert(self, endpoint: dict[str, Any]) -> bool:
         return (
-            self.settings.discord_alert_recovery_enabled
+            self.settings.alert_recovery_enabled
             and bool(endpoint.get("alert_on_recovery", True))
         )

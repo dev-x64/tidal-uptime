@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
     check_interval_seconds: int = Field(default=300, alias="CHECK_INTERVAL_SECONDS")
-    request_timeout_seconds: float = Field(default=6.0, alias="REQUEST_TIMEOUT_SECONDS")
+    request_timeout_seconds: float = Field(default=10.0, alias="REQUEST_TIMEOUT_SECONDS")
     database_path: str = Field(default="data/uptime.db", alias="DATABASE_PATH")
     reference_api_version_source_url: str = Field(
         default="https://raw.githubusercontent.com/binimum/hifi-api/refs/heads/main/main.py",
@@ -65,22 +65,16 @@ class Settings(BaseSettings):
         alias="USER_AGENT",
     )
     search_query: str = Field(default="the weeknd", alias="SEARCH_QUERY")
-    discord_webhook_url: str | None = Field(default=None, alias="DISCORD_WEBHOOK_URL")
-    discord_alerts_enabled: bool = Field(default=True, alias="DISCORD_ALERTS_ENABLED")
-    discord_alert_username: str = Field(default="Tidal Uptime", alias="DISCORD_ALERT_USERNAME")
-    discord_alert_failure_streak: int = Field(default=2, alias="DISCORD_ALERT_FAILURE_STREAK")
-    discord_alert_recovery_enabled: bool = Field(
-        default=True,
-        alias="DISCORD_ALERT_RECOVERY_ENABLED",
-    )
-    discord_alert_recovery_streak: int = Field(default=1, alias="DISCORD_ALERT_RECOVERY_STREAK")
-    discord_alert_trigger_states_raw: str = Field(
+    alert_failure_streak: int = Field(default=2, alias="ALERT_FAILURE_STREAK")
+    alert_recovery_enabled: bool = Field(default=True, alias="ALERT_RECOVERY_ENABLED")
+    alert_recovery_streak: int = Field(default=1, alias="ALERT_RECOVERY_STREAK")
+    alert_trigger_states_raw: str = Field(
         default="outage,degraded",
-        alias="DISCORD_ALERT_TRIGGER_STATES",
+        alias="ALERT_TRIGGER_STATES",
     )
-    discord_alert_trigger_probes_raw: str = Field(
+    alert_trigger_probes_raw: str = Field(
         default="api,search,track",
-        alias="DISCORD_ALERT_TRIGGER_PROBES",
+        alias="ALERT_TRIGGER_PROBES",
     )
     email_alerts_enabled: bool = Field(default=True, alias="EMAIL_ALERTS_ENABLED")
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
@@ -97,44 +91,33 @@ class Settings(BaseSettings):
     smtp_use_starttls: bool = Field(default=True, alias="SMTP_USE_STARTTLS")
     smtp_use_ssl: bool = Field(default=False, alias="SMTP_USE_SSL")
     smtp_timeout_seconds: float = Field(default=10.0, alias="SMTP_TIMEOUT_SECONDS")
+    metrics_max_payload_bytes: int = Field(default=200_000, alias="METRICS_MAX_PAYLOAD_BYTES")
 
     default_endpoints: tuple[str, ...] = (
-        "https://hifi-one.spotisaver.net",
-        "https://hifi-two.spotisaver.net",
-        "https://ohio-1.monochrome.tf",
-        "https://singapore-1.monochrome.tf",
-        "https://frankfurt-1.monochrome.tf",
-        "https://api.monochrome.tf",
-        "https://monochrome-api.samidy.com",
-        "https://tidal.kinoplus.online",
-        "https://triton.squid.wtf",
         "https://wolf.qqdl.site",
         "https://maus.qqdl.site",
-        "https://vogel.qqdl.site",
         "https://katze.qqdl.site",
         "https://hund.qqdl.site",
-        "https://eu-central.monochrome.tf",
-        "https://us-west.monochrome.tf",
-        "https://arran.monochrome.tf",
+        "https://hifi-spo.spotisaver.net",
+        "https://hifi-api2.spotisaver.net",
+        "https://hifi-api3.spotisaver.net",
     )
 
-    probe_track_ids: tuple[int, ...] = (134858527, 125155092, 204567804)
+    default_group_name: str = "Tidal"
 
-    @property
-    def discord_alerting_enabled(self) -> bool:
-        return self.discord_alerts_enabled and bool(self.discord_webhook_url)
+    probe_track_ids: tuple[int, ...] = (134858527, 125155092, 204567804)
 
     @property
     def email_alerting_enabled(self) -> bool:
         return self.email_alerts_enabled and bool(self.smtp_host) and bool(self.smtp_from_email)
 
     @property
-    def discord_alert_trigger_states(self) -> tuple[str, ...]:
-        return self._split_csv(self.discord_alert_trigger_states_raw)
+    def alert_trigger_states(self) -> tuple[str, ...]:
+        return self._split_csv(self.alert_trigger_states_raw)
 
     @property
-    def discord_alert_trigger_probes(self) -> tuple[str, ...]:
-        return self._split_csv(self.discord_alert_trigger_probes_raw)
+    def alert_trigger_probes(self) -> tuple[str, ...]:
+        return self._split_csv(self.alert_trigger_probes_raw)
 
     @property
     def status_page_history_points(self) -> int:
