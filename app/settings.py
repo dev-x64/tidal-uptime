@@ -50,7 +50,7 @@ class Settings(BaseSettings):
         alias="REFERENCE_API_VERSION_REFRESH_SECONDS",
     )
     history_retention_runs: int = Field(default=4320, alias="HISTORY_RETENTION_RUNS")
-    status_page_window_hours: int = Field(default=8, alias="STATUS_PAGE_WINDOW_HOURS")
+    status_page_window_hours: int = Field(default=168, alias="STATUS_PAGE_WINDOW_HOURS")
     max_track_retries: int = Field(default=2, alias="MAX_TRACK_RETRIES")
     admin_password: str = Field(default="change-me", alias="ADMIN_PASSWORD")
     auth_cookie_name: str = Field(default="tidal_uptime_auth", alias="AUTH_COOKIE_NAME")

@@ -16,7 +16,8 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('app/monitor.py', encoding='utf-8'\\).read\\(\\)\\); print\\('ok'\\)\")",
       "Bash(python -c \"import ast; [ast.parse\\(open\\(f'app/{f}', encoding='utf-8'\\).read\\(\\)\\) for f in \\('database.py','monitor.py','main.py','settings.py'\\)]; print\\('ok'\\)\")",
       "Bash(python -c \"from app.dashboard import render_dashboard; print\\(len\\(render_dashboard\\(\\)\\)\\)\")",
-      "Bash(python -c \"import ast; [ast.parse\\(open\\(f'app/{f}', encoding='utf-8'\\).read\\(\\)\\) for f in \\('database.py','monitor.py','main.py','settings.py','dashboard.py'\\)]; print\\('ok'\\)\")"
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(f'app/{f}', encoding='utf-8'\\).read\\(\\)\\) for f in \\('database.py','monitor.py','main.py','settings.py','dashboard.py'\\)]; print\\('ok'\\)\")",
+      "Bash(python -c ' *)"
     ]
   }
 }

@@ -9,13 +9,14 @@ from pathlib import Path
 import uvicorn
 from fastapi import Cookie, FastAPI, HTTPException, Response, status
 from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.auth import AuthManager
-from app.dashboard import render_dashboard, render_login
+from app.dashboard import STATIC_DIR, render_dashboard, render_login
 from app.monitor import EndpointMonitor
 from app.settings import get_settings
 
@@ -39,6 +40,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Tidal Uptime", lifespan=lifespan)
+
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 class SubcheckPayload(BaseModel):
@@ -68,6 +72,7 @@ class EndpointPayload(BaseModel):
     match_value: str | None = Field(default=None, alias="matchValue")
     metrics_url: str | None = Field(default=None, alias="metricsUrl")
     metrics_keys: str | None = Field(default=None, alias="metricsKeys")
+    check_interval_seconds: int | None = Field(default=None, alias="checkIntervalSeconds")
     email_alerts_enabled: bool = Field(default=True, alias="emailAlertsEnabled")
     alert_on_outage: bool = Field(default=True, alias="alertOnOutage")
     alert_on_search: bool = Field(default=True, alias="alertOnSearch")
@@ -114,6 +119,7 @@ def _endpoint_payload_to_dict(payload: EndpointPayload) -> tuple[dict, list[dict
         "match_value": payload.match_value,
         "metrics_url": payload.metrics_url,
         "metrics_keys": payload.metrics_keys,
+        "check_interval_seconds": payload.check_interval_seconds,
         "email_alerts_enabled": payload.email_alerts_enabled,
         "alert_on_outage": payload.alert_on_outage,
         "alert_on_search": payload.alert_on_search,

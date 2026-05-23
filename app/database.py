@@ -147,6 +147,7 @@ class SQLiteStore:
                     alert_on_search INTEGER NOT NULL DEFAULT 1,
                     alert_on_track INTEGER NOT NULL DEFAULT 1,
                     alert_on_recovery INTEGER NOT NULL DEFAULT 1,
+                    check_interval_seconds INTEGER,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -388,6 +389,10 @@ class SQLiteStore:
                 connection.execute("ALTER TABLE monitored_endpoints ADD COLUMN metrics_url TEXT")
             if "metrics_keys" not in endpoint_columns:
                 connection.execute("ALTER TABLE monitored_endpoints ADD COLUMN metrics_keys TEXT")
+            if "check_interval_seconds" not in endpoint_columns:
+                connection.execute(
+                    "ALTER TABLE monitored_endpoints ADD COLUMN check_interval_seconds INTEGER"
+                )
 
             now = self._utc_now()
             tidal_group_row = connection.execute(
@@ -760,7 +765,7 @@ class SQLiteStore:
                 """
                 SELECT id, url, name, kind, group_id, request_method,
                        expected_status, match_type, match_path, match_value,
-                       metrics_url, metrics_keys,
+                       metrics_url, metrics_keys, check_interval_seconds,
                        alerts_enabled, email_alerts_enabled,
                        alert_on_outage, alert_on_search, alert_on_track, alert_on_recovery,
                        created_at, updated_at
@@ -835,7 +840,7 @@ class SQLiteStore:
 
     def _coerce_endpoint_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         kind = (payload.get("kind") or "tidal").strip().lower()
-        if kind not in {"tidal", "http"}:
+        if kind not in {"tidal", "http", "applemusic_wrapper"}:
             raise ValueError(f"Unsupported monitor kind: {kind}")
         url = str(payload["url"]).rstrip("/")
         if not url:
@@ -872,6 +877,14 @@ class SQLiteStore:
         if not metrics_keys:
             metrics_keys = None
 
+        check_interval_raw = payload.get("check_interval_seconds")
+        if check_interval_raw is None or check_interval_raw == "":
+            check_interval_seconds: int | None = None
+        else:
+            check_interval_seconds = int(check_interval_raw)
+            if check_interval_seconds < 1:
+                raise ValueError("check_interval_seconds must be >= 1")
+
         alerts_enabled = bool(payload.get("alerts_enabled", True))
         email_alerts_enabled = bool(payload.get("email_alerts_enabled", True))
         alert_on_outage = bool(payload.get("alert_on_outage", True))
@@ -891,6 +904,7 @@ class SQLiteStore:
             "match_value": match_value,
             "metrics_url": metrics_url,
             "metrics_keys": metrics_keys,
+            "check_interval_seconds": check_interval_seconds,
             "alerts_enabled": 1 if alerts_enabled else 0,
             "email_alerts_enabled": 1 if email_alerts_enabled else 0,
             "alert_on_outage": 1 if alert_on_outage else 0,
@@ -910,13 +924,13 @@ class SQLiteStore:
                     INSERT INTO monitored_endpoints (
                         url, name, kind, group_id, request_method,
                         expected_status, match_type, match_path, match_value,
-                        metrics_url, metrics_keys,
+                        metrics_url, metrics_keys, check_interval_seconds,
                         alerts_enabled, email_alerts_enabled,
                         alert_on_outage, alert_on_degraded,
                         alert_on_search, alert_on_track, alert_on_recovery,
                         created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         coerced["url"],
@@ -930,6 +944,7 @@ class SQLiteStore:
                         coerced["match_value"],
                         coerced["metrics_url"],
                         coerced["metrics_keys"],
+                        coerced["check_interval_seconds"],
                         coerced["alerts_enabled"],
                         coerced["email_alerts_enabled"],
                         coerced["alert_on_outage"],
@@ -958,7 +973,7 @@ class SQLiteStore:
                     UPDATE monitored_endpoints
                     SET url = ?, name = ?, kind = ?, group_id = ?, request_method = ?,
                         expected_status = ?, match_type = ?, match_path = ?, match_value = ?,
-                        metrics_url = ?, metrics_keys = ?,
+                        metrics_url = ?, metrics_keys = ?, check_interval_seconds = ?,
                         alerts_enabled = ?, email_alerts_enabled = ?,
                         alert_on_outage = ?, alert_on_degraded = ?,
                         alert_on_search = ?, alert_on_track = ?, alert_on_recovery = ?,
@@ -977,6 +992,7 @@ class SQLiteStore:
                         coerced["match_value"],
                         coerced["metrics_url"],
                         coerced["metrics_keys"],
+                        coerced["check_interval_seconds"],
                         coerced["alerts_enabled"],
                         coerced["email_alerts_enabled"],
                         coerced["alert_on_outage"],
@@ -1004,7 +1020,7 @@ class SQLiteStore:
                 """
                 SELECT id, url, name, kind, group_id, request_method,
                        expected_status, match_type, match_path, match_value,
-                       metrics_url, metrics_keys,
+                       metrics_url, metrics_keys, check_interval_seconds,
                        alerts_enabled, email_alerts_enabled,
                        alert_on_outage, alert_on_search, alert_on_track, alert_on_recovery,
                        created_at, updated_at
@@ -1731,6 +1747,11 @@ class SQLiteStore:
         payload["match_value"] = payload.get("match_value") or None
         payload["metrics_url"] = payload.get("metrics_url") or None
         payload["metrics_keys"] = payload.get("metrics_keys") or None
+        payload["check_interval_seconds"] = (
+            int(payload["check_interval_seconds"])
+            if payload.get("check_interval_seconds") is not None
+            else None
+        )
         payload["subchecks"] = payload.get("subchecks") or []
         return payload
 
@@ -2015,7 +2036,11 @@ class SQLiteStore:
         connection.execute("DROP INDEX IF EXISTS idx_endpoint_checks_url")
 
     def _prune_old_runs(self, connection: sqlite3.Connection) -> None:
-        retention = max(int(self.settings.history_retention_runs), 1)
+        retention = max(
+            int(self.settings.history_retention_runs),
+            int(self.settings.status_page_history_points),
+            1,
+        )
         run_ids_to_delete = connection.execute(
             """
             SELECT id

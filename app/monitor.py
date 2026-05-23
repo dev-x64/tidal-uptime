@@ -167,6 +167,7 @@ class EndpointMonitor:
                 self._snapshot = stored_snapshot
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run_forever())
+        self._task.add_done_callback(self._on_run_forever_done)
         initial_task = asyncio.create_task(self.refresh())
         self._background_tasks.add(initial_task)
         initial_task.add_done_callback(self._finalize_background_task)
@@ -319,6 +320,24 @@ class EndpointMonitor:
         await self.store.delete_endpoint(endpoint_id)
         await self._reload_snapshot_from_store()
 
+    def _on_run_forever_done(self, task: asyncio.Task[None]) -> None:
+        if self._stop_event.is_set():
+            return
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception("Periodic refresh loop crashed; restarting it")
+        else:
+            logger.warning("Periodic refresh loop exited without stop signal; restarting it")
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._task = loop.create_task(self._run_forever())
+        self._task.add_done_callback(self._on_run_forever_done)
+
     def _finalize_manual_refresh_task(self, task: asyncio.Task[None]) -> None:
         if self._manual_refresh_task is task:
             self._manual_refresh_task = None
@@ -327,15 +346,49 @@ class EndpointMonitor:
         except Exception:
             logger.exception("Background refresh failed")
 
+    SCHEDULER_TICK_SECONDS = 1.0
+
     async def _run_forever(self) -> None:
+        last_checked: dict[int, float] = {}
+        startup = time.monotonic()
         while not self._stop_event.is_set():
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
-                    timeout=self.settings.check_interval_seconds,
+                    timeout=self.SCHEDULER_TICK_SECONDS,
                 )
             except asyncio.TimeoutError:
-                await self.refresh()
+                try:
+                    await self._run_scheduler_tick(last_checked, startup)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("Periodic refresh failed; will retry next tick")
+
+    async def _run_scheduler_tick(
+        self,
+        last_checked: dict[int, float],
+        startup: float,
+    ) -> None:
+        endpoints = await self.store.list_endpoints()
+        now = time.monotonic()
+        default_interval = max(int(self.settings.check_interval_seconds), 1)
+        live_ids: set[int] = set()
+        due: list[dict[str, Any]] = []
+        for endpoint in endpoints:
+            endpoint_id = int(endpoint["id"])
+            live_ids.add(endpoint_id)
+            interval = endpoint.get("check_interval_seconds")
+            interval = max(int(interval), 1) if interval is not None else default_interval
+            last = last_checked.get(endpoint_id, startup)
+            if (now - last) >= interval:
+                due.append(endpoint)
+                last_checked[endpoint_id] = now
+        for stale_id in list(last_checked):
+            if stale_id not in live_ids:
+                last_checked.pop(stale_id, None)
+        if due:
+            await self._refresh_selected_endpoints(due)
 
     async def refresh(self) -> None:
         async with self._refresh_lock:
@@ -353,9 +406,11 @@ class EndpointMonitor:
                 follow_redirects=True,
             ) as client:
                 await self.reference_api_version.ensure_fresh(client)
-                results = await asyncio.gather(
-                    *(self._check_endpoint(client, endpoint) for endpoint in endpoints)
+                raw_results = await asyncio.gather(
+                    *(self._check_endpoint(client, endpoint) for endpoint in endpoints),
+                    return_exceptions=True,
                 )
+                results = self._normalize_check_results(endpoints, raw_results)
 
                 last_updated = utc_timestamp()
                 persisted_results = [
@@ -457,9 +512,11 @@ class EndpointMonitor:
                     for endpoint in selected_endpoints
                     if int(endpoint["id"]) in endpoints_by_id
                 ]
-                selected_results = await asyncio.gather(
-                    *(self._check_endpoint(client, endpoint) for endpoint in full_endpoints)
+                raw_selected_results = await asyncio.gather(
+                    *(self._check_endpoint(client, endpoint) for endpoint in full_endpoints),
+                    return_exceptions=True,
                 )
+                selected_results = self._normalize_check_results(full_endpoints, raw_selected_results)
 
                 for endpoint, result in zip(full_endpoints, selected_results):
                     latest_results_by_id[int(endpoint["id"])] = self._result_to_persisted_payload(result)
@@ -542,6 +599,44 @@ class EndpointMonitor:
 
         return snapshot
 
+    def _normalize_check_results(
+        self,
+        endpoints: list[dict[str, Any]],
+        raw_results: list[Any],
+    ) -> list[EndpointResult]:
+        normalized: list[EndpointResult] = []
+        for endpoint, raw in zip(endpoints, raw_results):
+            if isinstance(raw, EndpointResult):
+                normalized.append(raw)
+                continue
+            if isinstance(raw, BaseException):
+                logger.exception(
+                    "Endpoint check raised unexpectedly for %s",
+                    endpoint.get("url"),
+                    exc_info=raw,
+                )
+                normalized.append(
+                    EndpointResult(
+                        url=str(endpoint.get("url") or ""),
+                        kind=str(endpoint.get("kind") or "tidal"),
+                        api_issue=ProbeIssue(probe="api", status=500, error="internal error"),
+                    )
+                )
+                continue
+            logger.error(
+                "Endpoint check returned unexpected value for %s: %r",
+                endpoint.get("url"),
+                raw,
+            )
+            normalized.append(
+                EndpointResult(
+                    url=str(endpoint.get("url") or ""),
+                    kind=str(endpoint.get("kind") or "tidal"),
+                    api_issue=ProbeIssue(probe="api", status=500, error="internal error"),
+                )
+            )
+        return normalized
+
     def _result_to_persisted_payload(self, result: EndpointResult) -> dict[str, Any]:
         primary_issue = result.primary_issue
         return {
@@ -561,6 +656,8 @@ class EndpointMonitor:
         kind = str(endpoint.get("kind") or "tidal")
         if kind == "http":
             return await self._check_endpoint_http(client, endpoint)
+        if kind == "applemusic_wrapper":
+            return await self._check_endpoint_apple_music_wrapper(client, endpoint)
         return await self._check_endpoint_tidal(client, endpoint)
 
     PROBE_GAP_SECONDS = 1.0
@@ -668,6 +765,113 @@ class EndpointMonitor:
                 else None
             ),
             response_time_ms=primary_elapsed_ms,
+            subcheck_results=subcheck_results,
+        )
+
+    async def _check_endpoint_apple_music_wrapper(
+        self, client: httpx.AsyncClient, endpoint: dict[str, Any]
+    ) -> EndpointResult:
+        url = str(endpoint["url"])
+        start = time.perf_counter()
+        try:
+            response = await client.get(url)
+        except httpx.TimeoutException:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            subcheck_results = await self._run_subchecks_sequential(
+                client, endpoint, gap_before=True
+            )
+            return EndpointResult(
+                url=url,
+                kind="applemusic_wrapper",
+                api_issue=ProbeIssue(probe="api", status=504, error="Wrapper account timeout"),
+                response_time_ms=elapsed_ms,
+                subcheck_results=subcheck_results,
+            )
+        except httpx.RequestError as exc:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            subcheck_results = await self._run_subchecks_sequential(
+                client, endpoint, gap_before=True
+            )
+            return EndpointResult(
+                url=url,
+                kind="applemusic_wrapper",
+                api_issue=ProbeIssue(
+                    probe="api",
+                    status=503,
+                    error=f"Wrapper account unreachable: {exc.__class__.__name__}",
+                ),
+                response_time_ms=elapsed_ms,
+                subcheck_results=subcheck_results,
+            )
+
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        subcheck_results = await self._run_subchecks_sequential(
+            client, endpoint, gap_before=True
+        )
+        await self._fetch_and_store_metrics(client, endpoint)
+
+        if response.status_code >= 400:
+            return EndpointResult(
+                url=url,
+                kind="applemusic_wrapper",
+                api_issue=ProbeIssue(
+                    probe="api",
+                    status=int(response.status_code),
+                    error=self._extract_error_message(response, fallback="Wrapper account failed"),
+                ),
+                response_time_ms=elapsed_ms,
+                subcheck_results=subcheck_results,
+            )
+
+        try:
+            payload = response.json()
+        except ValueError:
+            return EndpointResult(
+                url=url,
+                kind="applemusic_wrapper",
+                api_issue=ProbeIssue(probe="api", status=502, error="Wrapper account invalid JSON"),
+                response_time_ms=elapsed_ms,
+                subcheck_results=subcheck_results,
+            )
+
+        if not isinstance(payload, dict):
+            return EndpointResult(
+                url=url,
+                kind="applemusic_wrapper",
+                api_issue=ProbeIssue(probe="api", status=502, error="Wrapper account payload invalid"),
+                response_time_ms=elapsed_ms,
+                subcheck_results=subcheck_results,
+            )
+
+        missing_tokens = [
+            key for key in ("dev_token", "music_token")
+            if not str(payload.get(key) or "").strip()
+        ]
+        if missing_tokens:
+            return EndpointResult(
+                url=url,
+                kind="applemusic_wrapper",
+                api_issue=ProbeIssue(
+                    probe="api",
+                    status=422,
+                    error=f"Wrapper account missing {', '.join(missing_tokens)}",
+                ),
+                response_time_ms=elapsed_ms,
+                subcheck_results=subcheck_results,
+            )
+
+        any_subcheck_failure = any(not item.ok for item in subcheck_results)
+        return EndpointResult(
+            url=url,
+            kind="applemusic_wrapper",
+            api_ok=True,
+            track_ok=not any_subcheck_failure,
+            search_issue=(
+                ProbeIssue(probe="search", status=502, error="Sub-check failed")
+                if any_subcheck_failure
+                else None
+            ),
+            response_time_ms=elapsed_ms,
             subcheck_results=subcheck_results,
         )
 
