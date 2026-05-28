@@ -7,3 +7,4 @@ venv/
 .smtp.toml
 data/uptime.db*
 data/reference_api_version.json
+docker-compose.override.yml
