@@ -18,6 +18,7 @@ const state = {
   checkIntervalSeconds: 60,
   historyWindowHours: 168,
   editingId: null,
+  instanceFormMode: "create",
   subscribeFor: null,
   subchecks: [],
   groupEditingId: null,
@@ -831,6 +832,7 @@ function renderInstanceList(items) {
           <div style="color:var(--muted); font-size:12px;">${escapeHtml(item.url)} · ${escapeHtml(item.kind)} · ${escapeHtml(groupName)} · ${subCount} sub-check${subCount === 1 ? "" : "s"}</div>
         </div>
         <div class="group-row-actions">
+          <button class="ghost-button" type="button" data-clone="${item.id}">Clone</button>
           <button class="ghost-button" type="button" data-edit="${item.id}">Edit</button>
           <button class="ghost-button danger" type="button" data-delete="${item.id}">Delete</button>
         </div>
@@ -839,9 +841,11 @@ function renderInstanceList(items) {
   }).join("");
 }
 refs.instanceList.addEventListener("click", async (event) => {
+  const cloneId = event.target.dataset?.clone;
   const editId = event.target.dataset?.edit;
   const deleteId = event.target.dataset?.delete;
-  if (editId) openInstanceForm(Number(editId));
+  if (cloneId) openInstanceForm(Number(cloneId), { clone: true });
+  else if (editId) openInstanceForm(Number(editId));
   else if (deleteId) {
     if (!confirm("Delete this monitor?")) return;
     try {
@@ -877,11 +881,14 @@ document.getElementById("disable-all-alerts").addEventListener("click", async ()
   }
 });
 
-async function openInstanceForm(id) {
-  state.editingId = id;
+async function openInstanceForm(id, options = {}) {
+  const cloneMode = options.clone === true;
+  state.editingId = cloneMode ? null : id;
+  state.instanceFormMode = cloneMode ? "clone" : (id ? "edit" : "create");
   state.subchecks = [];
-  refs.instanceFormTitle.textContent = id ? "Edit monitor" : "Add monitor";
-  refs.instanceDelete.hidden = !id;
+  refs.instanceFormTitle.textContent = cloneMode ? "Clone monitor" : (id ? "Edit monitor" : "Add monitor");
+  refs.instanceDelete.hidden = !id || cloneMode;
+  refs.instanceSubmit.textContent = cloneMode ? "Create clone" : (id ? "Save monitor" : "Add monitor");
   setStatus(refs.instanceStatus, "");
   refs.instanceForm.reset();
   refs.emailAlerts.checked = false;
@@ -898,7 +905,14 @@ async function openInstanceForm(id) {
     try {
       const payload = await fetchJson("/api/instances", { cache: "no-store" });
       const item = (payload.items || []).find((x) => x.id === id);
-      if (item) populateInstanceForm(item);
+      if (item) {
+        populateInstanceForm(item);
+        if (cloneMode) {
+          refs.instUrl.value = "";
+          if (item.name) refs.instName.value = `${item.name} (copy)`;
+          setStatus(refs.instanceStatus, "Cloned settings loaded. Set URL and save.");
+        }
+      }
     } catch (err) {
       if (err.message !== "Authentication required") setStatus(refs.instanceStatus, err.message, "error");
     }
@@ -1054,7 +1068,10 @@ refs.instanceForm.addEventListener("submit", async (event) => {
     const url = state.editingId ? `/api/instances/${state.editingId}` : "/api/instances";
     const method = state.editingId ? "PUT" : "POST";
     await fetchJson(url, { method, body: JSON.stringify(payload) });
-    showToast(state.editingId ? "Saved" : "Created", "Monitor updated.", "success");
+    const isEdit = state.instanceFormMode === "edit";
+    const title = isEdit ? "Saved" : "Created";
+    const message = isEdit ? "Monitor updated." : "Monitor created.";
+    showToast(title, message, "success");
     refs.instanceModal.classList.remove("open");
     await loadInstances();
     await loadStatusPage();
